@@ -1,135 +1,130 @@
 # Chameleon Protocol
 
-Chameleon Protocol is a research-oriented adaptive transport wrapper for packet-flow normalization. The project explores how to shape traffic so that it looks like ordinary, profile-consistent activity while preserving low-overhead transport primitives for experiments and protocol resilience testing.
+Chameleon Protocol — это исследовательский адаптивный транспортный стек для нормализации сетевых потоков. Проект направлен на то, чтобы динамически маскировать трафик под различные сетевые шаблоны, сохраняя при этом низкую перегрузку, воспроизводимость и поддерживаемость для экспериментов с устойчивостью протокола к классификации трафика.
 
-## Highlights
+## Что уже сделано
 
-- traffic morphing across profile templates: WebRTC, HTTP/3, Gaming
-- randomized packet normalization through padding
-- bounded jitter scheduling for timing control
-- deterministic epoch-based profile rotation
-- AEAD protection for payloads using AES-GCM
-- lightweight adaptive learner with persisted decisions
-- reproducible benchmark scenario and metrics report
+- морфинг трафика по профилям WebRTC, HTTP/3 и Gaming
+- рандомизированная нормализация размеров пакетов через padding
+- ограниченный jitter для управления таймингами
+- детерминированная ротация профилей по epoch
+- AEAD-защита полезной нагрузки через AES-GCM
+- lightweight learner с сохранением решений в JSON
+- воспроизводимый benchmark и отчёт по метрикам
+- базовый session lifecycle и минимальный handshake через X25519
 
-## Project goals
+## Цели проекта
 
-The protocol is designed for controlled research around:
+Протокол разрабатывается для научных исследований в области:
 
-1. flow normalization for traffic shaping
-2. adaptive profile selection under changing network conditions
-3. stealthy transport pattern imitation for evaluation of traffic classifiers
-4. reproducible benchmark experiments over local UDP transport
+1. нормализации потока для маскировки сетевых сигнатур
+2. адаптивного выбора профиля при изменении сетевых условий
+3. имитации легитимной активности для оценки устойчивости к классификаторам трафика
+4. воспроизводимых локальных экспериментов поверх UDP transport
 
-## Current architecture
+## Архитектура
 
 ```text
 chameleon-protocol/
 ├── cmd/
-│   ├── client/      # client entrypoint
-│   ├── server/      # server entrypoint
-│   └── benchmark/   # benchmark entrypoint
+│   ├── client/      # клиентский вход
+│   ├── server/      # серверный вход
+│   └── benchmark/   # бенчмарк-скрипт
 ├── pkg/
-│   ├── adaptive/    # learning and persisted route decisions
-│   ├── core/        # transport wrapper and packet framing
-│   ├── crypto/      # AEAD and key-exchange primitives
-│   ├── experiment/  # benchmark scenarios and metrics
-│   ├── morph/       # padding and jitter shaping
-│   └── state/       # deterministic epoch sync and rotation
+│   ├── adaptive/    # обучение и сохранение маршрутов
+│   ├── core/        # транспортная обёртка и кадрирование
+│   ├── crypto/      # AEAD и key-exchange примитивы
+│   ├── experiment/  # сценарии и метрики
+│   ├── morph/       # padding и jitter
+│   └── state/       # детерминированная синхронизация epoch
 └── go.mod
 ```
 
-## Core components
+## Основные компоненты
 
 ### pkg/core
 
-- Transport: UDP wrapper for normalization and sending
-- Normalizer: randomized target-size shaping before wire emission
-- BehaviorProfile: traffic-profile selection surface
-- EncodeFrame / DecodeFrame: frame packing and validation
+- Transport: UDP-обёртка над нормализацией и отправкой
+- Normalizer: случайная нормализация целевого размера данных
+- BehaviorProfile: поверхность выбора профиля поведения
+- EncodeFrame / DecodeFrame: упаковка и валидация кадра
 
 ### pkg/morph
 
-- PaddingConfig:
-  creates randomized packet-length normalization windows
-- JitterConfig:
-  injects bounded delay to emulate realistic burst timing
+- PaddingConfig: задаёт окно случайного дополнения длины пакета
+- JitterConfig: управляет ограниченным delay для тайминга
 
 ### pkg/crypto
 
-- Cipher:
-  symmetric AEAD payload wrapper using AES-GCM
-- KeyExchange:
-  minimal X25519-based shared secret derivation for experiments
+- Cipher: симметричная AEAD-обёртка над AES-GCM
+- KeyExchange: минимальная X25519-выработка общего секрета
+- Handshake: базовый session bootstrap для исследования
 
 ### pkg/state
 
-- Sync:
-  deterministic shared-secret epoch profile mapping
-- EpochState:
-  strict state-machine style epoch controller for profile rotation
+- Sync: детерминированное отображение профиля по общему секрету и epoch
+- EpochState: строгий контроллер ротации по времени
+- Session: явный lifecycle состояния сессии
 
 ### pkg/adaptive
 
-- Learner:
-  lightweight scoring memory for profile selection and persistence to JSON
+- Learner: lightweight scoring-память с сохранением истории и выбором профиля
 
 ### pkg/experiment
 
-- Scenario:
-  reproducible benchmark runner over loopback UDP
-- Metrics:
-  reportable throughput, latency, loss, and entropy stats
+- Scenario: воспроизводимый benchmark поверх loopback UDP
+- Metrics: отчёт по throughput, latency, loss rate и entropy
 
-## Supported behavior profiles
+## Поддерживаемые профили
 
 - webrtc
 - http3
 - gaming
 
-Each profile carries its own default padding and jitter windows.
+Каждый профиль задаёт свои значения padding и jitter.
 
-## Security note
+## Примечание по безопасности
 
-This project is an academic prototype and should not be treated as a full production transport. The current design uses:
+Это исследовательский прототип, а не промышленный secure transport. В текущем виде проект использует:
 
-- AEAD payload encryption for confidentiality
-- deterministic epoch rotation for coordinated profile switching
-- lightweight adaptive heuristics for route learning
+- AEAD-шифрование полезной нагрузки
+- детерминированную ротацию epoch
+- lightweight adaptive heuristic для выбора маршрута
 
-This reduces direct traffic signatures, but it is still vulnerable to advanced statistical analysis if an attacker observes many samples. A more robust architecture would require:
+Это снижает прямую узнаваемость трафика, но не делает протокол невосприимчивым к статистическому анализу. Более стойкая архитектура потребует:
 
-- authenticated key exchange with session binding
-- explicit handshake / rekey / epoch transition state machine
-- per-epoch entropy budgeting and stronger anti-classification controls
-- measured adversarial evaluation against traffic classifiers
+- аутентифицированного handshake
+- жестко заданного state machine для ключей и epoch
+- явного rekey-процесса при смене сессий
+- контроля entropy budget для padding
+- отдельной оценки под атакующими классификаторами трафика
 
-## Quick start
+## Быстрый старт
 
-### Requirements
+### Требования
 
 - Go 1.22+
-- Linux, macOS, or Windows with standard Go toolchain
+- Linux, macOS или Windows с обычной Go toolchain
 
-### Server
+### Сервер
 
 ```bash
 go run ./cmd/server --address=127.0.0.1:9000 --psk=research-secret
 ```
 
-### Client
+### Клиент
 
 ```bash
 go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=research-secret
 ```
 
-### Benchmark
+### Бенчмарк
 
 ```bash
 go run ./cmd/benchmark --profile=webrtc --burst=2 --rounds=1 --payload=hello-chameleon --psk=research-secret
 ```
 
-### Run the full verification suite
+### Полная проверка
 
 ```bash
 go test ./...
@@ -137,46 +132,33 @@ go test ./...
 
 ## Release checklist
 
-Before publishing the repository:
+Перед публикацией репозитория следует проверить:
 
-1. ensure the code is formatted with `gofmt`
-2. run `go test ./...`
-3. verify module metadata in `go.mod`
-4. review the license and ownership details
-5. publish a tagged release once the repository remote is configured
+1. форматирование через `gofmt`
+2. прохождение `go test ./...`
+3. корректность `go.mod`
+4. наличие лицензии и политики безопасности
+5. тегирование релиза после настройки remote
 
-## GitHub publication commands
+## Команды для публикации в GitHub
 
-The workspace currently does not expose a Git repository root, so the exact publish step cannot be completed from this environment. The following commands are the correct release sequence to use once the repository is initialized locally or on GitHub:
+В текущем окружении репозиторий уже подключён к GitHub. Для дальнейшего обновления релиза используйте:
 
 ```bash
-git init
-
 git add .
-
-git commit -m "Initial release: Chameleon Protocol"
-
-git branch -M main
-
-git remote add origin https://github.com/<YOUR-USER>/<YOUR-REPO>.git
-
-git push -u origin main
-```
-
-Optional tag for a versioned release:
-
-```bash
+git commit -m "chore: update release notes and protocol hardening"
+git push origin main
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## Status
+## Статус
 
-The current repository is a working research prototype with stable test coverage and a clear modular layout for continued protocol research.
+Проект уже представляет собой рабочий исследовательский transport prototype с хорошей модульной структурой, стабильным тестовым покрытием и расширяемым набором компонентов для дальнейших экспериментов.
 
-Further work should focus on:
+Дальнейшая работа должна идти в сторону:
 
-- full session handshake and authenticated key lifecycle
-- richer state-machine transitions for epoch rotation
-- multi-scenario experimental reporting and profile comparison
-- stronger anti-classification shaping budget control
+- полноценного authenticated handshake
+- реального key lifecycle и rekey state machine
+- comparison-отчётов по нескольким сценариям и профилям
+- более строгого контроля entropy и anti-classification поведения
