@@ -65,6 +65,7 @@ chameleon-protocol/
 - Sync: детерминированное отображение профиля по общему секрету и epoch
 - EpochState: строгий контроллер ротации по времени
 - Session: явный lifecycle состояния сессии
+- SessionContext: epoch-bound key derivation context для controlled rekey policy
 
 ### pkg/adaptive
 
@@ -89,6 +90,7 @@ chameleon-protocol/
 
 - AEAD-шифрование полезной нагрузки
 - детерминированную ротацию epoch
+- явный session lifecycle и epoch-bound key derivation
 - lightweight adaptive heuristic для выбора маршрута
 
 Это снижает прямую узнаваемость трафика, но не делает протокол невосприимчивым к статистическому анализу. Более стойкая архитектура потребует:
@@ -162,3 +164,4 @@ git push origin v0.1.0
 - реального key lifecycle и rekey state machine
 - comparison-отчётов по нескольким сценариям и профилям
 - более строгого контроля entropy и anti-classification поведения
+- расширения session context до полноценной security context для всех профилей и эпох

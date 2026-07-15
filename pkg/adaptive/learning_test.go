@@ -90,3 +90,33 @@ func TestAdaptiveLearnerCanPersistAndRestore(t *testing.T) {
 		t.Fatalf("unexpected restored best profile: %s", restored.BestProfile())
 	}
 }
+
+func TestAdaptiveLearnerPrefersRecentSuccessfulProfile(t *testing.T) {
+	learner := NewLearner()
+
+	old := time.Now().Add(-2 * time.Minute)
+	recent := time.Now()
+
+	learner.Observe(Observation{
+		Profile:    "webrtc",
+		Success:    true,
+		Latency:    4 * time.Millisecond,
+		Loss:       0.02,
+		Throughput: 1000,
+		Load:       0.4,
+		At:         old,
+	})
+	learner.Observe(Observation{
+		Profile:    "http3",
+		Success:    true,
+		Latency:    2 * time.Millisecond,
+		Loss:       0.00,
+		Throughput: 1800,
+		Load:       0.3,
+		At:         recent,
+	})
+
+	if got := learner.BestProfile(); got != "http3" {
+		t.Fatalf("expected recent successful profile to win, got %s", got)
+	}
+}

@@ -45,7 +45,28 @@ func (s *Session) State() SessionState {
 	return s.state
 }
 
-// Advance moves the session forward through the lifecycle and records epoch changes.
+// Begin starts the session lifecycle with explicit key-exchange state.
+func (s *Session) Begin() error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	switch s.state {
+	case SessionClosed:
+		return fmt.Errorf("session is closed")
+	case SessionIdle, "":
+		s.state = SessionKeyExchange
+		s.lastTransition = time.Now()
+		return nil
+	default:
+		return nil
+	}
+}
+
+// Advance moves the session through established and rotating transitions.
 func (s *Session) Advance(ts time.Time, profile string, period time.Duration) error {
 	if s == nil {
 		return nil
@@ -66,23 +87,37 @@ func (s *Session) Advance(ts time.Time, profile string, period time.Duration) er
 	defer s.mu.Unlock()
 
 	switch s.state {
-	case "", SessionIdle:
-		s.state = SessionKeyExchange
-	case SessionKeyExchange:
-		s.state = SessionEstablished
-	case SessionRotating:
-		s.state = SessionEstablished
 	case SessionClosed:
 		return fmt.Errorf("session is closed")
+	case "", SessionIdle:
+		s.state = SessionKeyExchange
+		s.lastTransition = ts
+	case SessionKeyExchange:
+		s.state = SessionEstablished
+		s.lastTransition = ts
 	}
 
 	if s.epoch != epoch || s.profile != profile {
 		s.state = SessionRotating
+		s.lastTransition = ts
 		s.epoch = epoch
 		s.profile = profile
-		s.lastTransition = ts
 		s.state = SessionEstablished
 	}
 
+	return nil
+}
+
+// Close terminates the session and prevents further transitions.
+func (s *Session) Close() error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.state = SessionClosed
+	s.lastTransition = time.Now()
 	return nil
 }

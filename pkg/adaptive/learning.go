@@ -18,6 +18,7 @@ type Observation struct {
 	Loss       float64
 	Throughput float64
 	Load       float64
+	At         time.Time
 }
 
 // Decision is the learned best route for the next send window.
@@ -167,6 +168,16 @@ func (l *Learner) score(profile string) float64 {
 		return 0
 	}
 
+	latest := time.Time{}
+	for _, obs := range observations {
+		if obs.At.After(latest) {
+			latest = obs.At
+		}
+	}
+	if latest.IsZero() {
+		latest = time.Now()
+	}
+
 	score := 0.0
 	for _, obs := range observations {
 		if obs.Success {
@@ -179,8 +190,13 @@ func (l *Learner) score(profile string) float64 {
 		lossPenalty := obs.Loss * 3.0
 		loadPenalty := obs.Load * 0.5
 		throughputBoost := math.Min(obs.Throughput/1000.0, 4.0)
+		recencyBoost := 0.0
+		if !obs.At.IsZero() {
+			delta := latest.Sub(obs.At)
+			recencyBoost = math.Max(0.0, 1.0-(float64(delta)/float64(30*time.Minute)))
+		}
 
-		score += latencyFactor*2.0 + throughputBoost - lossPenalty - loadPenalty
+		score += latencyFactor*2.0 + throughputBoost + recencyBoost - lossPenalty - loadPenalty
 	}
 
 	return score / float64(len(observations))
