@@ -1,0 +1,21 @@
+# Go build artifacts
+/bin/
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test output
+coverage.out
+*.test
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local state
+*.log
+*.tmp
