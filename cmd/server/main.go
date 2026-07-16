@@ -75,6 +75,10 @@ func main() {
 	for {
 		n, remoteAddr, err := conn.ReadFrom(buffer)
 		if err != nil {
+			// suppress noisy timeout errors caused by temporary ReadDeadline
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
 			fmt.Println("read error:", err)
 			continue
 		}
