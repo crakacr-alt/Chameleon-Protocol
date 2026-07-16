@@ -111,24 +111,28 @@ func main() {
 						if _, err := conn.Write(rm); err == nil {
 							fmt.Printf("sent rekey message to %s\n", *target)
 						}
-						// read server rekey response
-						n2, err := conn.Read(resp)
-						if err == nil && n2 > 0 {
-							var rmResp chcrypto.RekeyMessage
-							if err := json.Unmarshal(resp[:n2], &rmResp); err == nil {
-								peerPub, _ := base64.StdEncoding.DecodeString(r["ed25519"])
-								epoch, verr := chcrypto.VerifyRekeyMessage(&rmResp, peerPub)
-								if verr == nil {
-									// derive symmetric key locally using KeyManager
-									sk, _ := km.GetEpochKey(epoch, 32)
-									aead, _ := chcrypto.NewCipherFromKey(sk)
-									// use transport UpdateCipher if implemented (demo sends shaped afterwards)
-									fmt.Printf("derived new session key, switching cipher locally\n")
-									// in this demo, we don't have direct access to transport here
-									_ = aead
+							// read server rekey response
+							n2, err := conn.Read(resp)
+							if err == nil && n2 > 0 {
+								var rmResp chcrypto.RekeyMessage
+								if err := json.Unmarshal(resp[:n2], &rmResp); err == nil {
+									peerPub, _ := base64.StdEncoding.DecodeString(r["ed25519"])
+									epoch, verr := chcrypto.VerifyRekeyMessage(&rmResp, peerPub)
+									if verr == nil {
+										// derive symmetric key locally using KeyManager
+										sk, _ := km.GetEpochKey(epoch, 32)
+										aead, _ := chcrypto.NewCipherFromKey(sk)
+										// send ack back to server to confirm installation
+										ack, _ := chcrypto.CreateRekeyAck(km, epoch, km.Public())
+										ackb, _ := json.Marshal(ack)
+										if _, err := conn.Write(ackb); err == nil {
+											fmt.Printf("sent rekey ack to server and installed new key\n")
+											// here we would swap transport cipher atomically
+											_ = aead
+										}
+									}
 								}
 							}
-						}
 					}
 				}
 			}

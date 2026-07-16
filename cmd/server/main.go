@@ -151,9 +151,22 @@ func main() {
 													if _, err := conn.WriteTo(sdata, remoteAddr); err != nil {
 														fmt.Printf("failed to send server rekey: %v\n", err)
 													} else {
-														fmt.Printf("completed rekey exchange with %s\n", id)
-														// optionally update server transport cipher here (not shown)
-														_ = sk
+														// wait for client's ack
+														rb2 := make([]byte, 2048)
+														conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+														n3, _, err := conn.ReadFrom(rb2)
+														if err == nil && n3 > 0 {
+															var ack chameleoncrypto.RekeyAck
+															if err := json.Unmarshal(rb2[:n3], &ack); err == nil {
+																// verify ack
+																if _, verr := chameleoncrypto.VerifyRekeyAck(&ack, spub); verr == nil {
+																	fmt.Printf("completed rekey exchange with %s and received ack\n", id)
+																	// apply symmetric key swap here (server-side)
+																	// e.g., find transport for remoteAddr and call UpdateCipher(newCipher)
+																	_ = sk
+																}
+															}
+														}
 													}
 												}
 											}
