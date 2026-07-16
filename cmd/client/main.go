@@ -14,6 +14,8 @@ func main() {
 	profile := flag.String("profile", string(core.ProfileWebRTC), "traffic profile: webrtc, http3, gaming")
 	burst := flag.Int("burst", 1, "number of shaped packets to send")
 	psk := flag.String("psk", "research-secret", "shared secret for optional AEAD encryption")
+	adaptiveStorePath := flag.String("adaptive-store", "", "optional path to a JSON learner state file")
+	sessionMemoryPath := flag.String("session-memory", "", "optional path to a JSON session-memory file")
 	flag.Parse()
 
 	conn, err := net.Dial("udp", *target)
@@ -23,8 +25,10 @@ func main() {
 	defer conn.Close()
 
 	transport, err := core.NewTransport(conn, core.Config{
-		Profile:      core.BehaviorProfile(*profile),
-		SharedSecret: *psk,
+		Profile:           core.BehaviorProfile(*profile),
+		SharedSecret:      *psk,
+		AdaptiveStorePath: *adaptiveStorePath,
+		SessionMemoryPath: *sessionMemoryPath,
 	})
 	if err != nil {
 		panic(err)

@@ -4,17 +4,30 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/Hack2p/chameleon/pkg/core"
 	chameleoncrypto "github.com/Hack2p/chameleon/pkg/crypto"
 )
+
+func normalizeListenAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ":9000"
+	}
+	if strings.Contains(address, ":") {
+		return address
+	}
+	return address + ":9000"
+}
 
 func main() {
 	address := flag.String("address", ":9000", "UDP address to listen on")
 	psk := flag.String("psk", "research-secret", "shared secret for optional AEAD decryption")
 	flag.Parse()
 
-	conn, err := net.ListenPacket("udp", *address)
+	listenAddress := normalizeListenAddress(*address)
+	conn, err := net.ListenPacket("udp", listenAddress)
 	if err != nil {
 		panic(err)
 	}
@@ -25,7 +38,7 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("server listening on %s\n", *address)
+	fmt.Printf("server listening on %s\n", listenAddress)
 
 	buffer := make([]byte, 4096)
 	for {

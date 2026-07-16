@@ -45,6 +45,17 @@ func (s *Session) State() SessionState {
 	return s.state
 }
 
+// Epoch returns the current epoch tracked by the session.
+func (s *Session) Epoch() int64 {
+	if s == nil {
+		return 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.epoch
+}
+
 // Begin starts the session lifecycle with explicit key-exchange state.
 func (s *Session) Begin() error {
 	if s == nil {

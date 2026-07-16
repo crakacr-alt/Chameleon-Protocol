@@ -14,12 +14,14 @@ import (
 
 // Config holds packet shaping parameters for the Chameleon wrapper.
 type Config struct {
-	Profile      BehaviorProfile
-	Padding      morph.PaddingConfig
-	Jitter       morph.JitterConfig
-	SharedSecret string
-	EpochPeriod  time.Duration
-	Adaptive     *adaptive.Learner
+	Profile           BehaviorProfile
+	Padding           morph.PaddingConfig
+	Jitter            morph.JitterConfig
+	SharedSecret      string
+	EpochPeriod       time.Duration
+	Adaptive          *adaptive.Learner
+	AdaptiveStorePath string
+	SessionMemoryPath string
 }
 
 // Normalizer is the main packet shaping engine.
@@ -68,13 +70,14 @@ func (n *Normalizer) NormalizePacket(payload []byte) ([]byte, time.Duration, err
 
 // Transport is a small UDP wrapper that applies normalization before sending.
 type Transport struct {
-	conn       net.Conn
-	normalizer *Normalizer
-	cipher     *chameleoncrypto.Cipher
-	syncer     *state.Sync
-	session    *state.Session
-	adaptive   *adaptive.Learner
-	mu         sync.Mutex
+	conn          net.Conn
+	normalizer    *Normalizer
+	cipher        *chameleoncrypto.Cipher
+	syncer        *state.Sync
+	session       *state.Session
+	adaptive      *adaptive.Learner
+	sessionMemory *adaptive.SessionMemory
+	mu            sync.Mutex
 }
 
 // NewTransport creates a thin transport wrapper around a net.Conn.
@@ -82,6 +85,24 @@ func NewTransport(conn net.Conn, cfg Config) (*Transport, error) {
 	normalizer, err := NewNormalizer(cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	learner := cfg.Adaptive
+	if learner == nil {
+		learner = adaptive.NewLearner()
+	}
+	if cfg.AdaptiveStorePath != "" {
+		if err := learner.SetStorePath(cfg.AdaptiveStorePath); err != nil {
+			return nil, fmt.Errorf("set adaptive store path: %w", err)
+		}
+	}
+
+	var sessionMemory *adaptive.SessionMemory
+	if cfg.SessionMemoryPath != "" {
+		sessionMemory, err = adaptive.NewSessionMemory(cfg.SessionMemoryPath)
+		if err != nil {
+			return nil, fmt.Errorf("new session memory: %w", err)
+		}
 	}
 
 	var cipher *chameleoncrypto.Cipher
@@ -101,12 +122,13 @@ func NewTransport(conn net.Conn, cfg Config) (*Transport, error) {
 	}
 
 	return &Transport{
-		conn:       conn,
-		normalizer: normalizer,
-		cipher:     cipher,
-		syncer:     syncer,
-		session:    state.NewSession(),
-		adaptive:   cfg.Adaptive,
+		conn:          conn,
+		normalizer:    normalizer,
+		cipher:        cipher,
+		syncer:        syncer,
+		session:       state.NewSession(),
+		adaptive:      learner,
+		sessionMemory: sessionMemory,
 	}, nil
 }
 
@@ -156,30 +178,11 @@ func (t *Transport) Send(payload []byte) error {
 	_, err = t.conn.Write(framed)
 	t.mu.Unlock()
 	if err != nil {
-		if t.adaptive != nil {
-			t.adaptive.Observe(adaptive.Observation{
-				Profile:    string(profile),
-				Success:    false,
-				Latency:    time.Since(start),
-				Loss:       1.0,
-				Throughput: float64(len(payload)),
-				Load:       float64(len(normalized)) / 1024.0,
-			})
-		}
+		t.observeObservation(profile, false, start, payload, normalized)
 		return err
 	}
 
-	if t.adaptive != nil {
-		t.adaptive.Observe(adaptive.Observation{
-			Profile:    string(profile),
-			Success:    true,
-			Latency:    time.Since(start),
-			Loss:       0,
-			Throughput: float64(len(payload)),
-			Load:       float64(len(normalized)) / 1024.0,
-		})
-	}
-
+	t.observeObservation(profile, true, start, payload, normalized)
 	return nil
 }
 
@@ -196,6 +199,29 @@ func (t *Transport) SendBurst(payload []byte, count int) error {
 	}
 
 	return nil
+}
+
+func (t *Transport) observeObservation(profile BehaviorProfile, success bool, started time.Time, payload, normalized []byte) {
+	obs := adaptive.Observation{
+		Profile:    string(profile),
+		Success:    success,
+		Latency:    time.Since(started),
+		Loss:       0.0,
+		Throughput: float64(len(payload)),
+		Load:       float64(len(normalized)) / 1024.0,
+		SessionID:  "transport",
+		At:         time.Now(),
+	}
+	if !success {
+		obs.Loss = 1.0
+	}
+
+	if t.adaptive != nil {
+		t.adaptive.Observe(obs)
+	}
+	if t.sessionMemory != nil {
+		_ = t.sessionMemory.Observe(obs)
+	}
 }
 
 func (cfg Config) resolveProfileDefaults() Config {
@@ -215,7 +241,13 @@ func (cfg Config) resolveProfileDefaults() Config {
 }
 
 func (t *Transport) profileName() BehaviorProfile {
-	if t.adaptive != nil {
+	if t.sessionMemory != nil && len(t.sessionMemory.Profiles) > 0 {
+		memoryProfile := t.sessionMemory.BestProfile()
+		if memoryProfile != "" && memoryProfile != "webrtc" {
+			return BehaviorProfile(memoryProfile)
+		}
+	}
+	if t.adaptive != nil && t.adaptive.HasHistory() {
 		decision := t.adaptive.Decide()
 		if decision.Profile != "" {
 			return BehaviorProfile(decision.Profile)

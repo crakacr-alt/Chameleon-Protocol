@@ -18,6 +18,8 @@ type Observation struct {
 	Loss       float64
 	Throughput float64
 	Load       float64
+	SessionID  string
+	Epoch      int64
 	At         time.Time
 }
 
@@ -72,10 +74,11 @@ func (l *Learner) Decide() Decision {
 		bestProfile = "webrtc"
 	}
 
+	confidence := l.score(bestProfile)
 	l.lastDecision = Decision{
 		Profile:    bestProfile,
-		Reason:     fmt.Sprintf("adaptive score from %d observations", len(l.history[bestProfile])),
-		Confidence: l.score(bestProfile),
+		Reason:     fmt.Sprintf("adaptive score from %d observations (confidence %.2f)", len(l.history[bestProfile]), confidence),
+		Confidence: confidence,
 	}
 
 	return l.lastDecision
@@ -86,6 +89,21 @@ func (l *Learner) BestProfile() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.BestProfileLocked()
+}
+
+// HasHistory reports whether the learner already has persisted observations.
+func (l *Learner) HasHistory() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, observations := range l.history {
+		if len(observations) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // SetStorePath configures a JSON persistence file for learned observations.
@@ -178,11 +196,23 @@ func (l *Learner) score(profile string) float64 {
 		latest = time.Now()
 	}
 
+	successCount := 0
+	streak := 0
+	bestStreak := 0
 	score := 0.0
 	for _, obs := range observations {
 		if obs.Success {
+			successCount++
+			streak++
+			if streak > bestStreak {
+				bestStreak = streak
+			}
 			score += 1.6
 		} else {
+			if streak > bestStreak {
+				bestStreak = streak
+			}
+			streak = 0
 			score -= 1.2
 		}
 
@@ -195,9 +225,11 @@ func (l *Learner) score(profile string) float64 {
 			delta := latest.Sub(obs.At)
 			recencyBoost = math.Max(0.0, 1.0-(float64(delta)/float64(30*time.Minute)))
 		}
+		stabilityBoost := math.Min(float64(bestStreak)*0.12, 1.2)
 
-		score += latencyFactor*2.0 + throughputBoost + recencyBoost - lossPenalty - loadPenalty
+		score += latencyFactor*2.0 + throughputBoost + recencyBoost + stabilityBoost - lossPenalty - loadPenalty
 	}
 
-	return score / float64(len(observations))
+	successRate := float64(successCount) / float64(len(observations))
+	return (score / float64(len(observations))) + (successRate * 0.75) + (math.Min(float64(bestStreak)*0.15, 1.0))
 }
