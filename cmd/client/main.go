@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"time"
+	"path/filepath"
 
 	"github.com/Hack2p/chameleon/pkg/core"
 	chcrypto "github.com/Hack2p/chameleon/pkg/crypto"
@@ -30,29 +31,35 @@ func main() {
 
 	flag.Parse()
 
-	// If identity is provided, load or create persistent identity via KeyManager
+	// If identity is provided, create or load persistent Ed25519 key via KeyManager
 	var ah *chcrypto.AuthHandshake
 	if *identity != "" {
-		// ensure id store exists and create keys if needed
+		// ensure id store exists
 		store, err := idstore.NewStore(*idStorePath)
 		if err != nil {
 			panic(err)
 		}
-		pubb, err := store.LoadOrCreateIdentity(*identity)
+		// determine key path next to the id store (e.g., identity.key)
+		keyPath := "" 
+		if *idStorePath == "" {
+			keyPath = *identity + ".key"
+		} else {
+			keyPath = filepath.Join(filepath.Dir(*idStorePath), *identity+".key")
+		}
+		km, err := chcrypto.NewKeyManager(keyPath)
 		if err != nil {
 			panic(err)
 		}
-		// convert pub back to raw
-		pubraw, _ := base64.StdEncoding.DecodeString(pubb)
-		fmt.Printf("loaded identity %s pub=%s\n", *identity, pubb)
-		// create ephemeral X25519 and sign using newly created key via AuthHandshake
-		ah, err = chcrypto.NewAuthHandshake()
+		ah, err = chcrypto.NewAuthHandshakeWithKeyManager(km)
 		if err != nil {
 			panic(err)
 		}
-		// replace ed25519 pub with stored one for demonstration (signing uses ephemeral)
-		// NOTE: For a full implementation, client should use KeyManager and sign with persistent priv.
-		ah.edPub = pubraw
+		edpub := base64.StdEncoding.EncodeToString(km.Public())
+		if err := store.Register(*identity, edpub); err != nil {
+			// non-fatal: continue
+			fmt.Printf("warning: register identity: %v\n", err)
+		}
+		fmt.Printf("loaded identity %s pub=%s (key=%s)\n", *identity, edpub, keyPath)
 	}
 
 	conn, err := net.Dial("udp", *target)

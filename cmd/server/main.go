@@ -132,6 +132,8 @@ func main() {
 						rb := make([]byte, 2048)
 						conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 						n2, _, err := conn.ReadFrom(rb)
+						// clear deadline so main read loop is not affected
+						_ = conn.SetReadDeadline(time.Time{})
 						if err == nil && n2 > 0 {
 							var req chameleoncrypto.RekeyMessage
 							if err := json.Unmarshal(rb[:n2], &req); err == nil {
@@ -155,6 +157,8 @@ func main() {
 														rb2 := make([]byte, 2048)
 														conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 														n3, _, err := conn.ReadFrom(rb2)
+														// clear deadline after attempting read
+														_ = conn.SetReadDeadline(time.Time{})
 														if err == nil && n3 > 0 {
 															var ack chameleoncrypto.RekeyAck
 															if err := json.Unmarshal(rb2[:n3], &ack); err == nil {
