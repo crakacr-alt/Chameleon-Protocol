@@ -203,6 +203,7 @@ go test ./...
 ```bash
 apt update
 apt install -y git golang-go
+go1.26.5 build -v -o chameleon-server ./cmd/server/main.go
 chmod +x /opt/chameleon-protocol/deploy/deploy-vps.sh
 /opt/chameleon-protocol/deploy/deploy-vps.sh
 systemctl status chameleon-server --no-pager
