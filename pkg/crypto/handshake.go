@@ -1,7 +1,6 @@
 package crypto
 
 import (
-	"crypto/ecdh"
 	"crypto/rand"
 	"fmt"
 )
@@ -23,34 +22,23 @@ func NewHandshake() (*Handshake, error) {
 
 // PublicKey returns the peer-visible key bytes for transport.
 func (h *Handshake) PublicKey() ([]byte, error) {
-	if h == nil || h.keyExchange == nil || h.keyExchange.public == nil {
+	if h == nil || h.keyExchange == nil || len(h.keyExchange.public) == 0 {
 		return nil, fmt.Errorf("handshake is not initialized")
 	}
 
-	return h.keyExchange.public.Bytes(), nil
+	return append([]byte(nil), h.keyExchange.public...), nil
 }
 
 // DeriveSharedSecret builds the shared session secret from the remote public key.
 func (h *Handshake) DeriveSharedSecret(remotePublic []byte) ([]byte, error) {
-	if h == nil || h.keyExchange == nil || h.keyExchange.private == nil {
+	if h == nil || h.keyExchange == nil || len(h.keyExchange.private) == 0 {
 		return nil, fmt.Errorf("handshake is not initialized")
 	}
 	if len(remotePublic) == 0 {
 		return nil, fmt.Errorf("remote public key must not be empty")
 	}
 
-	curve := ecdh.X25519()
-	remote, err := curve.NewPublicKey(remotePublic)
-	if err != nil {
-		return nil, fmt.Errorf("decode remote public key: %w", err)
-	}
-
-	secret, err := h.keyExchange.private.ECDH(remote)
-	if err != nil {
-		return nil, fmt.Errorf("derive shared secret: %w", err)
-	}
-
-	return secret, nil
+	return h.keyExchange.SharedSecret(remotePublic)
 }
 
 // GenerateNonce creates a unique per-session nonce using crypto/rand.

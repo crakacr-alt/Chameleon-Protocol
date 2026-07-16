@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/chameleon-protocol
+WorkingDirectory=/opt/Chameleon-Protocol
 Environment=CHAMELEON_PSK=research-secret
-ExecStart=/opt/chameleon-protocol/chameleon-server --address=:9000 --psk=${CHAMELEON_PSK}
+ExecStart=/opt/Chameleon-Protocol/chameleon-server --address=:9000 --psk=${CHAMELEON_PSK}
 Restart=always
 RestartSec=2
 

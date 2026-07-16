@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_URL=https://github.com/crakacr-alt/Chameleon-Protocol.git
-REPO_DIR=/opt/chameleon-protocol
+REPO_DIR=/opt/Chameleon-Protocol
 SERVICE_DEST=/etc/systemd/system/chameleon-server.service
 
 mkdir -p /opt
