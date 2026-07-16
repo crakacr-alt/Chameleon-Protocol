@@ -12,6 +12,7 @@ import (
 	"github.com/Hack2p/chameleon/pkg/core"
 	chameleoncrypto "github.com/Hack2p/chameleon/pkg/crypto"
 	idstore "github.com/Hack2p/chameleon/pkg/identity"
+	state "github.com/Hack2p/chameleon/pkg/state"
 )
 
 func normalizeListenAddress(address string) string {
@@ -132,7 +133,7 @@ func main() {
 						conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 						n2, _, err := conn.ReadFrom(rb)
 						if err == nil && n2 > 0 {
-							var req RekeyMessage
+							var req chameleoncrypto.RekeyMessage
 							if err := json.Unmarshal(rb[:n2], &req); err == nil {
 								// verify client request using registered identity if available
 								if id != "" {
@@ -140,12 +141,12 @@ func main() {
 									if store != nil {
 										if spub64, ok := store.Lookup(id); ok {
 											spub, _ := base64.StdEncoding.DecodeString(spub64)
-											epoch, verr := VerifyRekeyMessage(&req, spub)
+											epoch, verr := chameleoncrypto.VerifyRekeyMessage(&req, spub)
 											if verr == nil {
 												// server derives symmetric key for epoch and responds with its rekey
 												sk, _ := km.GetEpochKey(epoch, 32)
 												// create server rekey message signed by server identity
-												srvReq, _ := CreateRekeyMessage(km, epoch, "server-info")
+												srvReq, _ := chameleoncrypto.CreateRekeyMessage(km, epoch, "server-info")
 												if sdata, err := json.Marshal(srvReq); err == nil {
 													if _, err := conn.WriteTo(sdata, remoteAddr); err != nil {
 														fmt.Printf("failed to send server rekey: %v\n", err)
