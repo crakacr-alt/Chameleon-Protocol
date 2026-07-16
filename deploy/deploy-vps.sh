@@ -2,8 +2,8 @@
 set -euo pipefail
 
 REPO_URL=https://github.com/crakacr-alt/Chameleon-Protocol.git
-REPO_DIR=/opt/Chameleon-Protocol
-SERVICE_DEST=/etc/systemd/system/chameleon-server.service
+REPO_DIR=/opt/chameleon
+SERVICE_DEST=/etc/systemd/system/chameleon.service
 
 mkdir -p /opt
 if [ ! -d "$REPO_DIR/.git" ]; then
@@ -14,7 +14,7 @@ fi
 
 cd "$REPO_DIR"
 GOFLAGS='' go build -o "$REPO_DIR/chameleon-server" ./cmd/server
-install -m 0644 "$REPO_DIR/deploy/chameleon-server.service" "$SERVICE_DEST"
+install -m 0644 "$REPO_DIR/deploy/chameleon.service" "$SERVICE_DEST"
 systemctl daemon-reload
-systemctl enable --now chameleon-server
-systemctl status chameleon-server --no-pager
+systemctl enable --now chameleon
+systemctl status chameleon --no-pager

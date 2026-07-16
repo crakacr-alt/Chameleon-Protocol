@@ -24,6 +24,13 @@ type Config struct {
 	SessionMemoryPath string
 }
 
+// UpdateCipher atomically replaces the AEAD cipher used by the transport.
+func (t *Transport) UpdateCipher(c *chameleoncrypto.Cipher) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cipher = c
+}
+
 // Normalizer is the main packet shaping engine.
 type Normalizer struct {
 	padding morph.PaddingConfig
@@ -74,7 +81,7 @@ type Transport struct {
 	normalizer    *Normalizer
 	cipher        *chameleoncrypto.Cipher
 	syncer        *state.Sync
-	session       *state.Session
+	session       *state.SessionWithSecurity
 	adaptive      *adaptive.Learner
 	sessionMemory *adaptive.SessionMemory
 	mu            sync.Mutex
@@ -126,7 +133,7 @@ func NewTransport(conn net.Conn, cfg Config) (*Transport, error) {
 		normalizer:    normalizer,
 		cipher:        cipher,
 		syncer:        syncer,
-		session:       state.NewSession(),
+		session:       state.NewSessionWithSecurity(),
 		adaptive:      learner,
 		sessionMemory: sessionMemory,
 	}, nil
@@ -163,10 +170,30 @@ func (t *Transport) Send(payload []byte) error {
 		if err := t.session.Advance(time.Now(), string(profile), period); err != nil {
 			return fmt.Errorf("advance session: %w", err)
 		}
+		// ensure session has SecurityContext keys derived for current epoch
+		if t.session.Sec != nil && t.syncer != nil {
+			epochID, _ := t.syncer.EpochID(time.Now())
+			// derive symmetric key for AEAD using KeyManager if available via cipher fallback
+			// Note: for now we derive using epochID and existing cipher: placeholder
+			t.session.Sec.EpochID = epochID
+			if t.normalizer != nil && t.normalizer.padding.EntropyBudget > 0 {
+				t.session.Sec.EntropyBudget = t.normalizer.padding.EntropyBudget
+			}
+		}
 	}
 
 	if delay > 0 {
 		time.Sleep(delay)
+	}
+
+	// deduct entropy budget if present
+	if t.session != nil && t.session.Sec != nil {
+		if t.session.Sec.EntropyBudget > 0 {
+			if int64(len(normalized)-len(data)) > t.session.Sec.EntropyBudget {
+				return fmt.Errorf("entropy budget exceeded for session")
+			}
+			t.session.Sec.EntropyBudget -= int64(len(normalized) - len(data))
+		}
 	}
 
 	framed, err := EncodeFrame(profile, normalized, len(data))

@@ -26,9 +26,27 @@ type Session struct {
 	lastTransition time.Time
 }
 
+// SecurityContext holds epoch-bound security artifacts for a session.
+type SecurityContext struct {
+	EpochID       []byte
+	SymmetricKey  []byte // derived per-epoch
+	EntropyBudget int64  // remaining entropy budget in bytes
+}
+
+// Session now embeds a SecurityContext for key lifecycle management.
+type SessionWithSecurity struct {
+	*Session
+	Sec *SecurityContext
+}
+
 // NewSession creates a new stateful transport session.
 func NewSession() *Session {
 	return &Session{state: SessionIdle, profile: "webrtc"}
+}
+
+// NewSessionWithSecurity creates a session prepopulated with a security context placeholder.
+func NewSessionWithSecurity() *SessionWithSecurity {
+	return &SessionWithSecurity{Session: NewSession(), Sec: &SecurityContext{EntropyBudget: 1024}}
 }
 
 // State returns the current session lifecycle state.

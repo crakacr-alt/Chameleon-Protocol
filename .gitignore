@@ -1,21 +1,24 @@
-# Go build artifacts
-/bin/
-/build/
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test output
-coverage.out
-*.test
-
-# Editor / OS
+$ign = @'
+.vs/
 .vscode/
-.idea/
-.DS_Store
-Thumbs.db
+bin/
+obj/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vsidx
+*.key
+identity_store.json
+server.key
+'@
+Set-Content -Path .gitignore -Value $ign -Encoding utf8
 
-# Local state
-*.log
-*.tmp
+$attr = @'
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.md text
+*.go text
+'@
+Set-Content -Path .gitattributes -Value $attr -Encoding utf8

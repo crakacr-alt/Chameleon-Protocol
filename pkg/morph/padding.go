@@ -10,6 +10,9 @@ import (
 type PaddingConfig struct {
 	MinPad int
 	MaxPad int
+	// EntropyBudget limits how many padding bytes may be consumed per session
+	// or per security context. If zero, no explicit limit is applied.
+	EntropyBudget int64
 }
 
 // Validate ensures the padding configuration is safe and bounded.
@@ -66,6 +69,15 @@ func (c PaddingConfig) Normalize(payload []byte, targetSize int) ([]byte, error)
 	padding := make([]byte, paddingLen)
 	if _, err := rand.Read(padding); err != nil {
 		return nil, fmt.Errorf("generate padding: %w", err)
+	}
+
+	// If an entropy budget is configured, ensure we do not exceed it.
+	if c.EntropyBudget > 0 {
+		// Note: enforcement should be done by the caller who tracks session budget.
+		// Here we conservatively check per-packet padding against the configured budget.
+		if int64(paddingLen) > c.EntropyBudget {
+			return nil, fmt.Errorf("padding %d exceeds entropy budget %d", paddingLen, c.EntropyBudget)
+		}
 	}
 
 	return append(normalized, padding...), nil

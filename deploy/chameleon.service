@@ -1,0 +1,15 @@
+[Unit]
+Description=Chameleon Protocol transport service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chameleon
+ExecStart=/opt/chameleon/chameleon-server --address=":9000" --psk="research-secret"
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
