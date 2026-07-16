@@ -165,6 +165,45 @@ gaming: throughput=2691.16 loss=0.0000 mean_latency=5.5738ms
 go test ./...
 ```
 
+### VPS deployment на 88.210.20.127
+
+Релизный deployment набор уже подготовлен в каталоге `deploy/`.
+
+1. Зайти на VPS:
+
+```bash
+ssh root@88.210.20.127
+```
+
+2. Установить зависимости и запустить deployment:
+
+```bash
+apt update
+apt install -y git golang-go
+chmod +x /opt/chameleon-protocol/deploy/deploy-vps.sh
+/opt/chameleon-protocol/deploy/deploy-vps.sh
+systemctl status chameleon-server --no-pager
+```
+
+3. Проверить, что сервис слушает UDP-порт:
+
+```bash
+ss -lunp | grep 9000
+```
+
+### What is ready / what is still next
+
+**Ready now**
+- release-ready README and bilingual summary
+- adaptive learning and session memory
+- benchmark comparison matrix
+- Linux VPS deployment bundle with systemd service
+
+**Still next**
+- authenticated peer handshake
+- full epoch key rekey policy integration
+- real desktop/mobile client application
+- operational hardening and long-term resilience testing
 
 ## Статус
 
@@ -233,6 +272,49 @@ go run ./cmd/benchmark --compare --payload=hello-chameleon --burst=1 --rounds=1 
 go test ./...
 ```
 
+### VPS deployment on 88.210.20.127
+
+The release deployment bundle is already prepared in the `deploy/` directory.
+
+1. Connect to the VPS:
+
+```bash
+ssh root@88.210.20.127
+```
+
+2. Install dependencies and run the deployment script:
+
+```bash
+apt update
+apt install -y git golang-go
+chmod +x /opt/chameleon-protocol/deploy/deploy-vps.sh
+/opt/chameleon-protocol/deploy/deploy-vps.sh
+systemctl status chameleon-server --no-pager
+```
+
+3. Confirm the UDP listener is up:
+
+```bash
+ss -lunp | grep 9000
+```
+
 ## Current status
 
 The project is already a working research transport prototype with a stable modular structure, passing tests, adaptive memory, and benchmark-backed evidence. The next logical stage is deployment on a VPS as a long-running service with a hardened session and rekey policy.
+
+## Production-grade release summary
+
+### Ready now
+
+- benchmark and comparison matrix CLI
+- self-learning adaptive profile memory
+- session-aware transport behavior
+- deployment scripts for Linux VPS
+- release-ready bilingual documentation
+
+### Next engineering frontier
+
+- authenticated handshake with real endpoint trust
+- fully integrated rekey policy for every epoch boundary
+- real customer-facing clients for mobile and desktop
+- operational hardening, telemetry, and resilience testing
