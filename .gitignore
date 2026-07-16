@@ -1,4 +1,3 @@
-$ign = @'
 .vs/
 .vscode/
 bin/
@@ -11,14 +10,3 @@ obj/
 *.key
 identity_store.json
 server.key
-'@
-Set-Content -Path .gitignore -Value $ign -Encoding utf8
-
-$attr = @'
-* text=auto
-*.sh text eol=lf
-*.ps1 text eol=crlf
-*.md text
-*.go text
-'@
-Set-Content -Path .gitattributes -Value $attr -Encoding utf8

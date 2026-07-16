@@ -3,6 +3,7 @@ package crypto
 import (
 	"encoding/base64"
 	"fmt"
+	"crypto/ed25519"
 )
 
 // RekeyMessage is the signed payload sent between peers to initiate a key swap.
