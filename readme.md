@@ -158,7 +158,20 @@ chameleon-protocol/
 - Linux, macOS или Windows с обычной Go toolchain
 
 ### Сервер
+```bash
+cd /opt/Chameleon-Protocol
+git pull origin main
+go1.26.5 mod tidy
+GOOS=linux GOARCH=amd64 go1.26.5 build -v -o chameleon-server ./cmd/server
+sudo mv -f chameleon-server /opt/chameleon/chameleon-server
+sudo chmod 0755 /opt/chameleon/chameleon-server
+sudo cp deploy/chameleon.service /etc/systemd/system/chameleon.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now chameleon
+sudo journalctl -u chameleon -f
+```
 
+или отдельно
 ```bash
 go run ./cmd/server --address=127.0.0.1:9000 --psk=research-secret
 
