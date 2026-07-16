@@ -165,28 +165,6 @@ gaming: throughput=2691.16 loss=0.0000 mean_latency=5.5738ms
 go test ./...
 ```
 
-## Release checklist
-
-Перед публикацией репозитория следует проверить:
-
-1. форматирование через `gofmt`
-2. прохождение `go test ./...`
-3. корректность `go.mod`
-4. наличие лицензии и политики безопасности
-5. воспроизводимое benchmark evidence через `--compare`
-6. тегирование релиза после настройки remote
-
-## Команды для публикации в GitHub
-
-В текущем окружении репозиторий уже подключён к GitHub. Для дальнейшего обновления релиза используйте:
-
-```bash
-git add .
-git commit -m "chore: update release notes and protocol hardening"
-git push origin main
-git tag v0.1.0
-git push origin v0.1.0
-```
 
 ## Статус
 
@@ -199,3 +177,62 @@ git push origin v0.1.0
 - более строгого контроля entropy и anti-classification поведения
 - расширения session context до полноценной security context для всех профилей и эпох
 - деплоя на VPS и запуска как long-running transport service
+
+---
+
+# English Summary
+
+Chameleon Protocol is a research-oriented adaptive transport stack for network-flow normalization. The goal is to shape traffic to look like different legitimate network profiles while keeping packet overhead, reproducibility, and experimentability under control.
+
+## What is already implemented
+
+- traffic morphing across WebRTC, HTTP/3, and Gaming profiles
+- randomized packet-size normalization through padding
+- bounded jitter control for timing shaping
+- deterministic epoch-based profile rotation
+- AEAD payload protection using AES-GCM
+- a lightweight learner that stores policy decisions in JSON
+- durable session memory for profile-performance learning across runs
+- reproducible benchmarks and metrics reporting
+- a basic session lifecycle and minimal X25519-based handshake
+
+## Why this should be better than existing approaches
+
+Most current solutions focus on transport encryption, routing, or simple traffic camouflage. Chameleon Protocol is different because it aims to become an adaptive, self-learning transport layer that:
+
+- analyzes which behavior profile performs best in real conditions
+- remembers successful and failed pattern outcomes
+- rotates profile behavior by epoch to reduce direct traffic signature predictability
+- produces benchmark evidence rather than only theoretical claims
+
+This makes the protocol more than “another VPN layer”: it becomes an evidence-driven, behavior-adaptive transport research platform.
+
+## Quick start
+
+### Server
+
+```bash
+go run ./cmd/server --address=127.0.0.1:9000 --psk=research-secret
+```
+
+### Client
+
+```bash
+go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=research-secret
+```
+
+### Benchmark comparison
+
+```bash
+go run ./cmd/benchmark --compare --payload=hello-chameleon --burst=1 --rounds=1 --psk=research-secret
+```
+
+### Full verification
+
+```bash
+go test ./...
+```
+
+## Current status
+
+The project is already a working research transport prototype with a stable modular structure, passing tests, adaptive memory, and benchmark-backed evidence. The next logical stage is deployment on a VPS as a long-running service with a hardened session and rekey policy.
