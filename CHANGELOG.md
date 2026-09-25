@@ -2,6 +2,33 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.3.0] - 2026-09-25
+
+### Added
+
+- добавлен `pkg/dpi` — отдельный adaptive DPI strategy layer;
+- память стратегий разделена по `network + destination + traffic class`;
+- добавлены дешёвые cross-platform стратегии `direct`, `split-early` и `paced-split`;
+- добавлены packet-control capabilities `fake-then-split` и `disorder-split` для будущих платформенных backend-ов;
+- добавлено JSON-сохранение результатов: attempts, success/failure, failure streak, latency и throughput;
+- generic writer умеет безопасно выполнять userspace split и явно отказывается имитировать raw-packet возможности без нужного backend-а;
+- добавлен документ `docs/adaptive_dpi.md` с архитектурой и этапами интеграции.
+
+### Changed
+
+- стратегия по умолчанию теперь проектируется по принципу direct-first: если обычный путь работает, дополнительная обработка не нужна;
+- будущая интеграция идей zapret/ByeDPI отделена от transport core, чтобы не привязывать весь проект к root/netfilter/VpnService;
+- обучение остаётся локальным и lightweight: без нейросети, облака и дополнительных платных сервисов.
+
+### Tests
+
+- добавлены тесты на выбор direct без истории;
+- добавлена проверка автоматической эскалации после повторных ошибок direct;
+- добавлена проверка запоминания успешной стратегии;
+- добавлена изоляция истории между разными сетями;
+- добавлена проверка persistence после перезапуска;
+- добавлены тесты userspace split writer и отказа от packet-control стратегии без backend-а.
+
 ## [0.2.1] - 2026-09-25
 
 ### Fixed
