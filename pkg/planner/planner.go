@@ -35,16 +35,27 @@ type Plan struct {
 	Reason        string
 }
 
-// Result feeds real measurements back into both learners.
+// FailureScope tells the learner which layer actually failed.
+// This prevents a DPI reset from poisoning a healthy physical route.
+type FailureScope string
+
+const (
+	ScopeBoth    FailureScope = "both"
+	ScopeCarrier FailureScope = "carrier"
+	ScopeDPI     FailureScope = "dpi"
+)
+
+// Result feeds real measurements back into the relevant learners.
 type Result struct {
-	Plan       Plan
+	Plan        Plan
 	Destination string
-	Protocol   string
-	Success    bool
-	Latency    time.Duration
-	Throughput float64
-	Failure    string
-	At         time.Time
+	Protocol    string
+	Success     bool
+	Scope       FailureScope
+	Latency     time.Duration
+	Throughput  float64
+	Failure     string
+	At          time.Time
 }
 
 // Planner joins route selection and DPI strategy selection.
@@ -134,39 +145,67 @@ func (p *Planner) Observe(result Result) error {
 		at = time.Now()
 	}
 
+	scope := result.Scope
+	if scope == "" {
+		scope = ScopeBoth
+	}
+
 	carrierCtx := carrier.Context{
 		NetworkID:    result.Plan.NetworkID,
 		Destination:  result.Destination,
 		TrafficClass: string(result.Plan.TrafficClass),
 		Protocol:     result.Protocol,
 	}
-	if err := p.Carriers.Observe(carrier.Observation{
-		Context:    carrierCtx,
-		Carrier:    result.Plan.Carrier.Carrier.Name,
-		Success:    result.Success,
-		Latency:    result.Latency,
-		Throughput: result.Throughput,
-		Failure:    result.Failure,
-		At:         at,
-	}); err != nil {
-		return fmt.Errorf("record carrier result: %w", err)
-	}
-
 	dpiCtx := dpi.Context{
 		NetworkID:    result.Plan.NetworkID,
 		Destination:  result.Plan.DPITarget,
 		TrafficClass: string(result.Plan.TrafficClass),
 	}
-	if err := p.DPI.Observe(dpi.Observation{
-		Context:    dpiCtx,
-		Strategy:   result.Plan.DPI.Strategy.Name,
-		Success:    result.Success,
-		Latency:    result.Latency,
-		Throughput: result.Throughput,
-		Failure:    result.Failure,
-		At:         at,
-	}); err != nil {
-		return fmt.Errorf("record dpi result: %w", err)
+
+	// A successful request proves both layers worked.
+	// On failure we update only the layer that actually failed when known.
+	if result.Success || scope == ScopeCarrier || scope == ScopeBoth {
+		if err := p.Carriers.Observe(carrier.Observation{
+			Context:    carrierCtx,
+			Carrier:    result.Plan.Carrier.Carrier.Name,
+			Success:    result.Success,
+			Latency:    result.Latency,
+			Throughput: result.Throughput,
+			Failure:    result.Failure,
+			At:         at,
+		}); err != nil {
+			return fmt.Errorf("record carrier result: %w", err)
+		}
+	}
+
+	if result.Success || scope == ScopeDPI || scope == ScopeBoth {
+		if err := p.DPI.Observe(dpi.Observation{
+			Context:    dpiCtx,
+			Strategy:   result.Plan.DPI.Strategy.Name,
+			Success:    result.Success,
+			Latency:    result.Latency,
+			Throughput: result.Throughput,
+			Failure:    result.Failure,
+			At:         at,
+		}); err != nil {
+			return fmt.Errorf("record dpi result: %w", err)
+		}
+	}
+
+	// If the route itself worked but DPI handling failed, record that the
+	// carrier was reachable. This keeps a cheap direct route available while
+	// the DPI engine explores split strategies.
+	if !result.Success && scope == ScopeDPI {
+		if err := p.Carriers.Observe(carrier.Observation{
+			Context:    carrierCtx,
+			Carrier:    result.Plan.Carrier.Carrier.Name,
+			Success:    true,
+			Latency:    result.Latency,
+			Throughput: result.Throughput,
+			At:         at,
+		}); err != nil {
+			return fmt.Errorf("record reachable carrier: %w", err)
+		}
 	}
 
 	return nil
