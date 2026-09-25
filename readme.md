@@ -15,6 +15,9 @@ Chameleon Protocol — исследовательский адаптивный t
 - NetworkContext detector, который отличает физическую сеть от Tailscale/WireGuard/tun
 - Carrier Engine: direct / Chameleon UDP / Chameleon TCP / внешний relay
 - Combined Adaptive Planner с раздельным обучением DPI-сбоев и недоступных маршрутов
+- реальный local SOCKS5 proxy без системного TUN/VPN
+- encrypted Chameleon TCP tunnel до VPS как рабочий fallback carrier
+- внешний SOCKS5 relay/sidecar как ещё один optional fallback
 - долговременная session memory для накопления опыта профиля между запуском и сессиями
 - воспроизводимый benchmark и отчёт по метрикам
 - базовый session lifecycle и минимальный handshake через X25519
@@ -87,6 +90,9 @@ chameleon-protocol/
 │   ├── networkctx/  # контекст текущей физической сети
 │   ├── planner/     # объединённый carrier + DPI decision engine
 │   ├── traffic/     # классификация web/streaming/realtime/bulk
+│   ├── tunnel/      # encrypted authenticated TCP tunnel
+│   ├── socks5/      # local SOCKS server + external relay client
+│   ├── proxy/       # выполнение adaptive carrier plan
 │   ├── experiment/  # сценарии и метрики
 │   ├── morph/       # padding и jitter
 │   └── state/       # детерминированная синхронизация epoch
@@ -153,6 +159,30 @@ chameleon-protocol/
 - при туннеле обучает DPI на видимом carrier endpoint, а не на конечном сайте
 
 Подробности: [docs/adaptive_planner.md](docs/adaptive_planner.md)
+
+### pkg/tunnel
+
+- encrypted TCP carrier с per-connection HKDF key
+- AES-GCM framing всего stream
+- destination/timestamp скрыты внутри AEAD handshake
+- replay cache и clock-skew validation
+- private VPS egress заблокирован по умолчанию
+
+### pkg/socks5
+
+- локальный SOCKS5 CONNECT server
+- SOCKS5 client для existing sidecar/relay
+- proxy по умолчанию слушает только loopback
+
+### pkg/proxy
+
+- исполняет Adaptive Planner
+- автоматически replans после hard carrier failure
+- записывает carrier success после TCP connect
+- записывает DPI success только после реального response traffic
+- first-write DPI strategy не добавляет overhead ко всему потоку
+
+Подробности: [docs/socks_tunnel.md](docs/socks_tunnel.md)
 
 ### pkg/experiment
 
@@ -233,6 +263,36 @@ go run ./cmd/client \
 go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=research-secret
 ```
 
+### Локальный SOCKS5 + TCP tunnel
+
+На VPS:
+
+```bash
+export CHAMELEON_TUNNEL_PSK="$(openssl rand -hex 32)"
+go run ./cmd/tunnel-server --listen=:9443 --psk="$CHAMELEON_TUNNEL_PSK"
+```
+
+На клиенте:
+
+```bash
+go run ./cmd/proxy \
+  --listen=127.0.0.1:1080 \
+  --chameleon-tcp=SERVER_IP:9443 \
+  --psk="$CHAMELEON_TUNNEL_PSK"
+```
+
+После этого приложение может использовать SOCKS5 `127.0.0.1:1080`.
+Системный VPN-интерфейс Chameleon в этом режиме не создаёт.
+
+Для VPS deployment через systemd:
+
+```bash
+export CHAMELEON_TUNNEL_PSK="$(openssl rand -hex 32)"
+sudo -E ./deploy/install-tunnel.sh
+```
+
+Подробнее: [docs/socks_tunnel.md](docs/socks_tunnel.md)
+
 ### Adaptive planner
 
 Показать план для текущей сети:
@@ -299,12 +359,18 @@ ss -lunp | grep 9000
 ### What is ready / what is still next
 
 **Ready now**
+- local SOCKS5 proxy + encrypted TCP tunnel fallback
+- adaptive direct / tunnel / external relay selection
 - release-ready README and bilingual summary
 - adaptive learning and session memory
 - benchmark comparison matrix
 - Linux VPS deployment bundle with systemd service
 
 **Still next**
+- TLS/HTTP carrier masquerade for the TCP tunnel
+- active application probes and automatic DPI-failure classification
+- UDP/QUIC general-purpose proxy path
+- session resume across carrier switches
 - fingerprint UX и optional configured trust anchors поверх TOFU
 - full epoch key rekey state machine, интегрированный в data path
 - fuzzing и независимый security review
