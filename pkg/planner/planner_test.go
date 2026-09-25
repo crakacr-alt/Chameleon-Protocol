@@ -118,3 +118,45 @@ func TestPlannerKeepsNetworkLearningSeparate(t *testing.T) {
 		t.Fatalf("mobile history leaked into wifi plan: %+v", wifiPlan)
 	}
 }
+
+
+func TestDPIFailureKeepsDirectCarrierAndEscalatesStrategy(t *testing.T) {
+	p := newTestPlanner(t)
+	req := Request{
+		Network:       networkctx.Context{ID: "mobile-dpi"},
+		Destination:   "example.com:443",
+		Protocol:      "tcp",
+		Purpose:       "web",
+		Carriers:      carrier.Defaults("server:9000", "server:443", ""),
+		DPIStrategies: dpi.DefaultStrategies(),
+	}
+
+	first, err := p.Choose(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := p.Observe(Result{
+			Plan:        first,
+			Destination: req.Destination,
+			Protocol:    req.Protocol,
+			Success:     false,
+			Scope:       ScopeDPI,
+			Latency:     40 * time.Millisecond,
+			Failure:     "connection reset after transport established",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	next, err := p.Choose(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Carrier.Carrier.Name != "direct" {
+		t.Fatalf("DPI failure must not poison direct carrier, got %q", next.Carrier.Carrier.Name)
+	}
+	if next.DPI.Strategy.Name != "split-early" {
+		t.Fatalf("expected DPI escalation to split-early, got %q", next.DPI.Strategy.Name)
+	}
+}
