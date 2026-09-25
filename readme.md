@@ -10,6 +10,8 @@ Chameleon Protocol — исследовательский адаптивный t
 - детерминированная ротация профилей по epoch
 - AEAD-защита полезной нагрузки через AES-GCM
 - lightweight learner с сохранением решений в JSON
+- adaptive DPI Strategy Engine: direct-first выбор стратегии по сети, назначению и типу трафика
+- cross-platform userspace split/paced-split без обязательного root-доступа
 - долговременная session memory для накопления опыта профиля между запуском и сессиями
 - воспроизводимый benchmark и отчёт по метрикам
 - базовый session lifecycle и минимальный handshake через X25519
@@ -77,6 +79,7 @@ chameleon-protocol/
 │   ├── adaptive/    # обучение и сохранение маршрутов
 │   ├── core/        # транспортная обёртка и кадрирование
 │   ├── crypto/      # AEAD и key-exchange примитивы
+│   ├── dpi/         # adaptive DPI strategy engine и userspace executor
 │   ├── experiment/  # сценарии и метрики
 │   ├── morph/       # padding и jitter
 │   └── state/       # детерминированная синхронизация epoch
@@ -113,6 +116,15 @@ chameleon-protocol/
 ### pkg/adaptive
 
 - Learner: lightweight scoring-память с сохранением истории и выбором профиля
+
+### pkg/dpi
+
+- Engine: хранит опыт отдельно для network + destination + traffic class
+- Strategy: direct/split/paced-split и capability-модель для packet-level backend
+- ApplyWriter: дешёвый userspace executor для proxy/embedded режима
+- JSON persistence: локальная память успешных и неуспешных стратегий
+
+Подробности: [docs/adaptive_dpi.md](docs/adaptive_dpi.md)
 
 ### pkg/experiment
 
