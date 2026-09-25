@@ -269,7 +269,7 @@ go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=res
 
 ```bash
 export CHAMELEON_TUNNEL_PSK="$(openssl rand -hex 32)"
-go run ./cmd/tunnel-server --listen=:9443 --psk="$CHAMELEON_TUNNEL_PSK"
+go run ./cmd/tunnel-server --listen=:9443
 ```
 
 На клиенте:
@@ -277,8 +277,7 @@ go run ./cmd/tunnel-server --listen=:9443 --psk="$CHAMELEON_TUNNEL_PSK"
 ```bash
 go run ./cmd/proxy \
   --listen=127.0.0.1:1080 \
-  --chameleon-tcp=SERVER_IP:9443 \
-  --psk="$CHAMELEON_TUNNEL_PSK"
+  --chameleon-tcp=SERVER_IP:9443
 ```
 
 После этого приложение может использовать SOCKS5 `127.0.0.1:1080`.
