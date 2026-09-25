@@ -18,8 +18,9 @@ type ServerConfig struct {
 	PSK              string
 	HandshakeTimeout time.Duration
 	DialTimeout      time.Duration
-	MaxClockSkew     time.Duration
-	DialContext      DialContextFunc
+	MaxClockSkew             time.Duration
+	AllowPrivateDestinations bool
+	DialContext              DialContextFunc
 }
 
 // Server accepts authenticated tunnel streams and forwards them to destinations.
@@ -110,6 +111,14 @@ func (s *Server) HandleConn(ctx context.Context, conn net.Conn) error {
 	}
 	defer upstream.Close()
 
+	if !s.cfg.AllowPrivateDestinations {
+		if err := rejectPrivateRemote(upstream.RemoteAddr()); err != nil {
+			message := append([]byte{1}, []byte("destination is not allowed")...)
+			_, _ = secure.Write(message)
+			return err
+		}
+	}
+
 	if _, err := secure.Write([]byte{0}); err != nil {
 		return fmt.Errorf("send tunnel ready status: %w", err)
 	}
@@ -159,4 +168,27 @@ func (s *Server) acceptNonce(nonce [nonceSize]byte, now time.Time) bool {
 
 func isClosedError(err error) bool {
 	return err == nil || errors.Is(err, net.ErrClosed)
+}
+
+
+func rejectPrivateRemote(addr net.Addr) error {
+	var ip net.IP
+	switch value := addr.(type) {
+	case *net.TCPAddr:
+		ip = value.IP
+	case *net.UDPAddr:
+		ip = value.IP
+	default:
+		// Custom dialers used by tests or embedded deployments may not expose
+		// an IP address. The default net.Dialer always does.
+		return nil
+	}
+	if ip == nil {
+		return nil
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("private destination %s is blocked by default", ip)
+	}
+	return nil
 }
