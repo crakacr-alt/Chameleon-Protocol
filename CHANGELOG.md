@@ -2,6 +2,47 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.5.0] - 2026-09-25
+
+### Added
+
+- добавлен первый general-purpose TCP proxy data path;
+- добавлен локальный `cmd/proxy` с SOCKS5 CONNECT на `127.0.0.1:1080` по умолчанию;
+- добавлен `cmd/tunnel-server` для VPS;
+- добавлен `pkg/tunnel` с per-connection HKDF key derivation и AES-GCM framed stream;
+- tunnel hello больше не раскрывает destination: version/timestamp/destination находятся внутри AEAD ciphertext;
+- добавлены timestamp + replay cache для tunnel hello;
+- добавлен `pkg/socks5` с локальным server и client для existing SOCKS sidecar/relay;
+- добавлен `pkg/proxy.AdaptiveDialer`, который исполняет решения Adaptive Planner и автоматически replans после hard carrier failure;
+- добавлен first-write DPI wrapper: split/paced-split применяется только к первому чувствительному write, без постоянного overhead на весь поток;
+- successful TCP dial теперь отдельно подтверждает carrier, а DPI success записывается только после реальных response bytes;
+- VPS tunnel по умолчанию запрещает egress к loopback/private/link-local addresses;
+- local SOCKS по умолчанию запрещено слушать non-loopback address без явного opt-in;
+- добавлены systemd unit и `deploy/install-tunnel.sh`;
+- добавлен документ `docs/socks_tunnel.md`.
+
+### Security
+
+- PSK для TCP tunnel обязателен и не имеет встроенного default secret;
+- tunnel metadata аутентифицируется и шифруется AEAD;
+- случайный KDF salt используется один раз на tunnel connection;
+- replayed hello salt отклоняется в пределах clock-skew window;
+- deploy хранит tunnel PSK вне репозитория в `/etc/chameleon/tunnel.env` с правами `0600`.
+
+### Tests
+
+- добавлены tests handshake/wrong PSK/expired timestamp;
+- добавлен large-payload encrypted stream test;
+- добавлен tunnel end-to-end test;
+- добавлены SOCKS5 handshake/data tests;
+- добавлен test автоматического обучения carrier success и DPI success на реальном response traffic;
+- добавлен regression test: carrier-only success не должен преждевременно помечать DPI strategy успешной.
+
+### Notes
+
+- TCP tunnel пока является собственным encrypted carrier, а не TLS/HTTP2 masquerade;
+- UDP/QUIC general-purpose proxy path и automatic application-level DPI probes остаются следующими этапами.
+
 ## [0.4.0] - 2026-09-25
 
 ### Added
