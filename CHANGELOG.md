@@ -2,6 +2,38 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.6.0] - 2026-09-25
+
+### Added
+
+- автоматическая классификация раннего DPI/application-path сбоя после уже успешного TCP connect;
+- first-response deadline для direct web/streaming соединений: blackhole теперь становится измеримым timeout, а не бесконечным зависанием;
+- успешный первый response byte немедленно подтверждает DPI strategy и снимает first-response deadline;
+- ранние EOF/RST/EPIPE/timeout без единого response byte автоматически записываются как DPI failure;
+- добавлен direct circuit breaker: если все доступные userspace DPI strategies недавно провалились, direct временно исключается и новый сеанс идёт через следующий carrier;
+- direct автоматически возвращается после cooldown, поэтому старый сетевой сбой не блокирует быстрый путь навсегда;
+- tunnel/relay handshake теперь считается доказательством работоспособности DPI strategy до first-hop endpoint;
+- добавлены настройки proxy `--direct-cooldown` и `--failure-window`.
+
+### Changed
+
+- автоматическое обучение больше не ждёт закрытия успешной сессии: первый реальный response byte уже является положительным evidence;
+- DPI failure после ранее записанного carrier success больше не создаёт второй carrier-success observation;
+- first-response timeout применяется только к direct web/streaming трафику, а не ко всем TCP-соединениям.
+
+### Tests
+
+- добавлен test раннего EOF после исходящих данных;
+- добавлен blackhole test, где peer принимает запрос, но не отвечает;
+- добавлен test автоматического выбора следующей DPI strategy;
+- добавлен test direct cooldown после провала всех DPI strategies;
+- добавлена regression-проверка отсутствия duplicate carrier credit.
+
+### Notes
+
+- automatic recovery происходит на следующем соединении/повторной попытке приложения;
+- безопасный transparent replay уже отправленных application bytes внутри существующей TCP-сессии пока не выполняется, чтобы не дублировать side-effecting запросы.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added

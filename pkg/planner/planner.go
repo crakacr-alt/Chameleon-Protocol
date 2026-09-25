@@ -47,15 +47,16 @@ const (
 
 // Result feeds real measurements back into the relevant learners.
 type Result struct {
-	Plan        Plan
-	Destination string
-	Protocol    string
-	Success     bool
-	Scope       FailureScope
-	Latency     time.Duration
-	Throughput  float64
-	Failure     string
-	At          time.Time
+	Plan                   Plan
+	Destination            string
+	Protocol               string
+	Success                bool
+	Scope                  FailureScope
+	CarrierAlreadyObserved bool
+	Latency                time.Duration
+	Throughput             float64
+	Failure                string
+	At                     time.Time
 }
 
 // Planner joins route selection and DPI strategy selection.
@@ -196,7 +197,7 @@ func (p *Planner) Observe(result Result) error {
 	// If the route itself worked but DPI handling failed, record that the
 	// carrier was reachable. This keeps a cheap direct route available while
 	// the DPI engine explores split strategies.
-	if !result.Success && scope == ScopeDPI {
+	if !result.Success && scope == ScopeDPI && !result.CarrierAlreadyObserved {
 		if err := p.Carriers.Observe(carrier.Observation{
 			Context:    carrierCtx,
 			Carrier:    result.Plan.Carrier.Carrier.Name,

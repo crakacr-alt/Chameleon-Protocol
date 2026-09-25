@@ -156,3 +156,48 @@ func TestEnginePersistsMemory(t *testing.T) {
 		t.Fatalf("unexpected persisted stats: %+v", got)
 	}
 }
+
+func TestRecentlyExhausted(t *testing.T) {
+	engine, err := NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := Context{NetworkID: "mobile", Destination: "example.com:443", TrafficClass: "web"}
+	now := time.Now()
+	strategies := DefaultStrategies()
+
+	for _, strategy := range strategies {
+		if err := engine.Observe(Observation{
+			Context:  ctx,
+			Strategy: strategy.Name,
+			Success:  false,
+			Latency:  100 * time.Millisecond,
+			Failure:  "early reset",
+			At:       now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if !engine.RecentlyExhausted(ctx, strategies, now.Add(time.Second), 10*time.Minute) {
+		t.Fatal("expected all recent failed strategies to be exhausted")
+	}
+
+	if engine.RecentlyExhausted(ctx, strategies, now.Add(11*time.Minute), 10*time.Minute) {
+		t.Fatal("expired failures must not keep the circuit breaker active")
+	}
+
+	if err := engine.Observe(Observation{
+		Context:  ctx,
+		Strategy: strategies[0].Name,
+		Success:  true,
+		Latency:  20 * time.Millisecond,
+		At:       now.Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if engine.RecentlyExhausted(ctx, strategies, now.Add(3*time.Minute), 10*time.Minute) {
+		t.Fatal("a recovered strategy must clear exhaustion")
+	}
+}

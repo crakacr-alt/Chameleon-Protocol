@@ -1,0 +1,58 @@
+package proxy
+
+import (
+	"errors"
+	"io"
+	"net"
+	"syscall"
+	"time"
+
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/carrier"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/planner"
+)
+
+// likelyDirectDPIFailure is deliberately conservative.
+//
+// A TCP connection was already established, so carrier reachability is known.
+// We only classify a later failure as DPI/application-path evidence when:
+//   - the carrier is direct;
+//   - the client actually attempted to send application bytes;
+//   - no response byte ever arrived;
+//   - the stream ended quickly with a terminal network-style error.
+//
+// This is evidence, not proof. The adaptive learner compares several strategies
+// rather than treating one observation as ground truth.
+func likelyDirectDPIFailure(
+	plan planner.Plan,
+	writeAttempted bool,
+	bytesRead int64,
+	err error,
+	elapsedSinceFirstWrite time.Duration,
+	window time.Duration,
+) bool {
+	if plan.Carrier.Carrier.Kind != carrier.KindDirect {
+		return false
+	}
+	if !writeAttempted || bytesRead > 0 || err == nil {
+		return false
+	}
+	if window <= 0 {
+		window = 12 * time.Second
+	}
+	if elapsedSinceFirstWrite < 0 || elapsedSinceFirstWrite > window+time.Second {
+		return false
+	}
+
+	if errors.Is(err, io.EOF) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return false
+}

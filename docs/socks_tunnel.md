@@ -1,6 +1,6 @@
-# Chameleon SOCKS + TCP Tunnel (v0.5.0)
+# Chameleon SOCKS + TCP Tunnel (v0.6.0)
 
-Версия 0.5.0 добавляет первый реальный general-purpose proxy data path.
+Версия 0.6.0 развивает рабочий proxy data path: теперь он сам учится на early reset/EOF и first-response blackhole, а после исчерпания direct DPI strategies временно переключается на другой carrier.
 
 До этого `cmd/server` был исследовательским UDP echo transport. Теперь отдельно
 добавлены:
@@ -126,6 +126,49 @@ SOCKS5 port: 1080
 Так Chameleon не объявляет DPI «пройденным» только потому, что TCP handshake
 состоялся.
 
+### Automatic DPI failure learning
+
+Для direct web/streaming соединения после первого исходящего application write
+ставится ограниченный first-response deadline. Он действует только до первого
+байта ответа.
+
+Если TCP уже был установлен, клиент отправил данные, но до ответа произошёл
+early EOF, RST, EPIPE или timeout, Chameleon записывает это как DPI/application-path
+failure для конкретной связки network + destination + traffic class.
+
+После первого response byte deadline снимается, и дальнейший long-lived поток
+не получает дополнительного timeout от Chameleon.
+
+По умолчанию:
+
+```text
+failure-window: 12s
+direct-cooldown: 10m
+```
+
+Значения можно изменить:
+
+```bash
+go run ./cmd/proxy \
+  --chameleon-tcp=SERVER_IP:9443 \
+  --failure-window=8s \
+  --direct-cooldown=5m
+```
+
+### Direct circuit breaker
+
+Если `direct`, `split-early` и `paced-split` для одного destination в одной
+сети недавно дали failure и ни один из них после этого не восстановился,
+следующее новое соединение временно пропускает direct carrier и идёт к tunnel
+или configured relay.
+
+После cooldown direct снова допускается к выбору. Это важно: Chameleon не
+запоминает временную блокировку навсегда.
+
+Переключение выполняется на новом TCP connection. Уже отправленные application
+bytes автоматически не replay-ятся, потому что для произвольного протокола это
+может повторить POST/платёж/другую side-effecting операцию.
+
 ## First-write DPI layer
 
 Для direct connection userspace strategy применяется только к первому `Write()`.
@@ -173,11 +216,9 @@ HTTPS/HTTP2 traffic.
 Следующие этапы:
 
 - стандартный TLS/HTTP carrier поверх TCP tunnel;
-- active application probes для автоматического DPI failure classification;
 - UDP/QUIC general-purpose relay;
 - session resume при смене carrier;
 - Android wrapper и desktop service;
 - optional packet-level backend для Linux/router.
 
-То есть v0.5.0 — первый рабочий proxy path, а не заявление о полной
-неразличимости от обычного web traffic.
+То есть v0.6.0 уже автоматически обучается на реальных failure-сигналах, но пока не является заявлением о полной неразличимости от обычного web traffic.
