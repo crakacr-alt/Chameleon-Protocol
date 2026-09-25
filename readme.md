@@ -18,6 +18,8 @@ Chameleon Protocol — исследовательский адаптивный t
 - реальный local SOCKS5 proxy без системного TUN/VPN
 - encrypted Chameleon TCP tunnel до VPS как рабочий fallback carrier
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
+- автоматическое распознавание early EOF/RST/blackhole после успешного TCP connect
+- direct circuit breaker: после провала всех DPI strategies новый сеанс временно уходит на tunnel/relay
 - долговременная session memory для накопления опыта профиля между запуском и сессиями
 - воспроизводимый benchmark и отчёт по метрикам
 - базовый session lifecycle и минимальный handshake через X25519
@@ -179,7 +181,9 @@ chameleon-protocol/
 - исполняет Adaptive Planner
 - автоматически replans после hard carrier failure
 - записывает carrier success после TCP connect
-- записывает DPI success только после реального response traffic
+- записывает DPI success сразу после первого реального response byte
+- автоматически учится на early EOF/RST/first-response timeout
+- временно выключает direct после недавнего провала всех userspace DPI strategies
 - first-write DPI strategy не добавляет overhead ко всему потоку
 
 Подробности: [docs/socks_tunnel.md](docs/socks_tunnel.md)
@@ -283,6 +287,17 @@ go run ./cmd/proxy \
 После этого приложение может использовать SOCKS5 `127.0.0.1:1080`.
 Системный VPN-интерфейс Chameleon в этом режиме не создаёт.
 
+Proxy автоматически измеряет early response failures. По умолчанию first-response
+window составляет 12 секунд, а direct cooldown после исчерпания DPI strategies —
+10 минут. При необходимости:
+
+```bash
+go run ./cmd/proxy \
+  --chameleon-tcp=SERVER_IP:9443 \
+  --failure-window=8s \
+  --direct-cooldown=5m
+```
+
 Для VPS deployment через systemd:
 
 ```bash
@@ -367,7 +382,6 @@ ss -lunp | grep 9000
 
 **Still next**
 - TLS/HTTP carrier masquerade for the TCP tunnel
-- active application probes and automatic DPI-failure classification
 - UDP/QUIC general-purpose proxy path
 - session resume across carrier switches
 - fingerprint UX и optional configured trust anchors поверх TOFU
