@@ -31,6 +31,12 @@ func (t *Transport) UpdateCipher(c *chameleoncrypto.Cipher) {
 	t.cipher = c
 }
 
+func (t *Transport) cipherSnapshot() *chameleoncrypto.Cipher {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cipher
+}
+
 // Normalizer is the main packet shaping engine.
 type Normalizer struct {
 	padding morph.PaddingConfig
@@ -149,8 +155,8 @@ func (t *Transport) Send(payload []byte) error {
 	profile := t.profileName()
 
 	data := payload
-	if t.cipher != nil {
-		sealed, err := t.cipher.Seal(payload)
+	if cipher := t.cipherSnapshot(); cipher != nil {
+		sealed, err := cipher.Seal(payload)
 		if err != nil {
 			return fmt.Errorf("seal payload: %w", err)
 		}
@@ -268,7 +274,7 @@ func (cfg Config) resolveProfileDefaults() Config {
 }
 
 func (t *Transport) profileName() BehaviorProfile {
-	if t.sessionMemory != nil && len(t.sessionMemory.Profiles) > 0 {
+	if t.sessionMemory != nil {
 		memoryProfile := t.sessionMemory.BestProfile()
 		if memoryProfile != "" && memoryProfile != "webrtc" {
 			return BehaviorProfile(memoryProfile)
