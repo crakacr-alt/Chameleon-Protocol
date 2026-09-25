@@ -2,6 +2,29 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.2.2] - 2026-09-25
+
+### Added
+
+- CodeQL-анализ;
+- Dependabot для Go modules и GitHub Actions;
+- CODEOWNERS, PR template и bug template;
+- fuzz seed для `DecodeFrame`;
+- VERSION-файл и проверяемый release process;
+- source-only GitHub Release workflow.
+
+### Changed
+
+- CI переведён на актуальные official GitHub Actions;
+- README синхронизирован с Go 1.25 и версией 0.2.2;
+- CONTRIBUTING требует vet, race tests и build перед PR;
+- SECURITY описывает конкретные security-sensitive классы ошибок.
+
+### Notes
+
+- transport/crypto функциональность в 0.2.2 не расширялась;
+- проект остаётся исследовательским прототипом.
+
 ## [0.2.1] - 2026-09-25
 
 ### Fixed
