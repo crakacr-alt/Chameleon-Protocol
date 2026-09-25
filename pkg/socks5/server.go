@@ -3,11 +3,11 @@ package socks5
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -236,9 +236,6 @@ func writeReply(conn net.Conn, code byte, addr net.Addr) error {
 }
 
 func isClosed(err error) bool {
-	return err == nil || err == net.ErrClosed
+	return err == nil || errors.Is(err, net.ErrClosed)
 }
 
-// compile-time use to keep sync available for future connection accounting
-// without changing the public structure.
-var _ sync.Locker
