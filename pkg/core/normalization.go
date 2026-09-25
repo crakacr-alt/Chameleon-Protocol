@@ -134,12 +134,18 @@ func NewTransport(conn net.Conn, cfg Config) (*Transport, error) {
 		}
 	}
 
+	session := state.NewSessionWithSecurity()
+	if session.Sec != nil {
+		// EntropyBudget is cumulative for the session. Zero means unlimited.
+		session.Sec.EntropyBudget = normalizer.padding.EntropyBudget
+	}
+
 	return &Transport{
 		conn:          conn,
 		normalizer:    normalizer,
 		cipher:        cipher,
 		syncer:        syncer,
-		session:       state.NewSessionWithSecurity(),
+		session:       session,
 		adaptive:      learner,
 		sessionMemory: sessionMemory,
 	}, nil
@@ -179,12 +185,10 @@ func (t *Transport) Send(payload []byte) error {
 		// ensure session has SecurityContext keys derived for current epoch
 		if t.session.Sec != nil && t.syncer != nil {
 			epochID, _ := t.syncer.EpochID(time.Now())
-			// derive symmetric key for AEAD using KeyManager if available via cipher fallback
-			// Note: for now we derive using epochID and existing cipher: placeholder
+			// The epoch identifier is metadata for the security context. The
+			// session entropy budget is initialized once in NewTransport and is
+			// deliberately not reset on every packet.
 			t.session.Sec.EpochID = epochID
-			if t.normalizer != nil && t.normalizer.padding.EntropyBudget > 0 {
-				t.session.Sec.EntropyBudget = t.normalizer.padding.EntropyBudget
-			}
 		}
 	}
 
