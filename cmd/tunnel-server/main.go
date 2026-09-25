@@ -18,6 +18,7 @@ func main() {
 	psk := flag.String("psk", "", "required pre-shared key for tunnel authentication")
 	handshakeTimeout := flag.Duration("handshake-timeout", 8*time.Second, "client handshake timeout")
 	dialTimeout := flag.Duration("dial-timeout", 8*time.Second, "destination dial timeout")
+	allowPrivate := flag.Bool("allow-private", false, "allow tunnel egress to private/loopback server networks")
 	flag.Parse()
 
 	if *psk == "" {
@@ -28,7 +29,8 @@ func main() {
 	server, err := tunnel.NewServer(tunnel.ServerConfig{
 		PSK:              *psk,
 		HandshakeTimeout: *handshakeTimeout,
-		DialTimeout:      *dialTimeout,
+		DialTimeout:              *dialTimeout,
+		AllowPrivateDestinations: *allowPrivate,
 	})
 	if err != nil {
 		panic(err)
