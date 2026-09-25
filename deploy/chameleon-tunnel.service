@@ -1,0 +1,19 @@
+[Unit]
+Description=Chameleon Protocol encrypted TCP tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/chameleon
+EnvironmentFile=/etc/chameleon/tunnel.env
+ExecStart=/opt/chameleon/chameleon-tunnel-server --listen=:9443
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
