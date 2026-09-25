@@ -66,9 +66,9 @@ func main() {
 	}
 
 	dialer := &adaptiveproxy.AdaptiveDialer{
-		Planner:       p,
-		Carriers:      carrier.Defaults("", *chameleonTCP, *relaySOCKS),
-		DPIStrategies: dpi.DefaultStrategies(),
+		Planner:                  p,
+		Carriers:                 carrier.Defaults("", *chameleonTCP, *relaySOCKS),
+		DPIStrategies:            dpi.DefaultStrategies(),
 		PSK:                      tunnelPSK,
 		Timeout:                  *timeout,
 		DirectCooldown:           *directCooldown,
