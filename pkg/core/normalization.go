@@ -31,6 +31,12 @@ func (t *Transport) UpdateCipher(c *chameleoncrypto.Cipher) {
 	t.cipher = c
 }
 
+func (t *Transport) cipherSnapshot() *chameleoncrypto.Cipher {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cipher
+}
+
 // Normalizer is the main packet shaping engine.
 type Normalizer struct {
 	padding morph.PaddingConfig
@@ -128,12 +134,18 @@ func NewTransport(conn net.Conn, cfg Config) (*Transport, error) {
 		}
 	}
 
+	session := state.NewSessionWithSecurity()
+	if session.Sec != nil {
+		// EntropyBudget is cumulative for the session. Zero means unlimited.
+		session.Sec.EntropyBudget = normalizer.padding.EntropyBudget
+	}
+
 	return &Transport{
 		conn:          conn,
 		normalizer:    normalizer,
 		cipher:        cipher,
 		syncer:        syncer,
-		session:       state.NewSessionWithSecurity(),
+		session:       session,
 		adaptive:      learner,
 		sessionMemory: sessionMemory,
 	}, nil
@@ -149,8 +161,8 @@ func (t *Transport) Send(payload []byte) error {
 	profile := t.profileName()
 
 	data := payload
-	if t.cipher != nil {
-		sealed, err := t.cipher.Seal(payload)
+	if cipher := t.cipherSnapshot(); cipher != nil {
+		sealed, err := cipher.Seal(payload)
 		if err != nil {
 			return fmt.Errorf("seal payload: %w", err)
 		}
@@ -173,12 +185,10 @@ func (t *Transport) Send(payload []byte) error {
 		// ensure session has SecurityContext keys derived for current epoch
 		if t.session.Sec != nil && t.syncer != nil {
 			epochID, _ := t.syncer.EpochID(time.Now())
-			// derive symmetric key for AEAD using KeyManager if available via cipher fallback
-			// Note: for now we derive using epochID and existing cipher: placeholder
+			// The epoch identifier is metadata for the security context. The
+			// session entropy budget is initialized once in NewTransport and is
+			// deliberately not reset on every packet.
 			t.session.Sec.EpochID = epochID
-			if t.normalizer != nil && t.normalizer.padding.EntropyBudget > 0 {
-				t.session.Sec.EntropyBudget = t.normalizer.padding.EntropyBudget
-			}
 		}
 	}
 
@@ -268,7 +278,7 @@ func (cfg Config) resolveProfileDefaults() Config {
 }
 
 func (t *Transport) profileName() BehaviorProfile {
-	if t.sessionMemory != nil && len(t.sessionMemory.Profiles) > 0 {
+	if t.sessionMemory != nil {
 		memoryProfile := t.sessionMemory.BestProfile()
 		if memoryProfile != "" && memoryProfile != "webrtc" {
 			return BehaviorProfile(memoryProfile)

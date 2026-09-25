@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,23 +32,30 @@ func NewKeyManager(path string) (*KeyManager, error) {
 	}
 
 	km := &KeyManager{Path: path}
-	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-		// file contains base64-encoded private key
+	data, readErr := os.ReadFile(path)
+	if readErr == nil {
+		if len(data) == 0 {
+			return nil, fmt.Errorf("existing private key file is empty")
+		}
 		raw, err := base64.StdEncoding.DecodeString(string(data))
 		if err != nil {
 			return nil, fmt.Errorf("decode private key: %w", err)
 		}
-		if len(raw) != ed25519.PrivateKeySize && len(raw) != ed25519.PrivateKeySize+0 {
-			// allow variable encoding lengths but validate minimum
-			// fallthrough to generate new key if invalid
-		} else {
-			km.priv = ed25519.PrivateKey(raw)
-			km.pub = km.priv.Public().(ed25519.PublicKey)
-			return km, nil
+		if len(raw) != ed25519.PrivateKeySize {
+			return nil, fmt.Errorf("invalid private key size: got %d, want %d", len(raw), ed25519.PrivateKeySize)
 		}
+		km.priv = ed25519.PrivateKey(raw)
+		km.pub = km.priv.Public().(ed25519.PublicKey)
+		if err := os.Chmod(path, 0o600); err != nil {
+			return nil, fmt.Errorf("secure private key permissions: %w", err)
+		}
+		return km, nil
+	}
+	if !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("read private key: %w", readErr)
 	}
 
-	// generate new keypair
+	// Generate a new keypair only when the identity file does not exist.
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate ed25519 key: %w", err)

@@ -46,7 +46,8 @@ func NewSession() *Session {
 
 // NewSessionWithSecurity creates a session prepopulated with a security context placeholder.
 func NewSessionWithSecurity() *SessionWithSecurity {
-	return &SessionWithSecurity{Session: NewSession(), Sec: &SecurityContext{EntropyBudget: 1024}}
+	// Zero means unlimited until a transport explicitly configures a budget.
+	return &SessionWithSecurity{Session: NewSession(), Sec: &SecurityContext{}}
 }
 
 // State returns the current session lifecycle state.

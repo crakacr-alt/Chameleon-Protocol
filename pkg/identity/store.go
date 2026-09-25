@@ -14,7 +14,7 @@ import (
 // Store provides a tiny identity registry persisted as JSON.
 type Store struct {
 	mu    sync.Mutex
-	Path  string            `json:"path"`
+	Path  string            `json:"-"`
 	IdMap map[string]string `json:"id_map"`
 }
 
