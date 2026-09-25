@@ -20,7 +20,6 @@ func NewSimpleClassifierSim(seed int64) *SimpleClassifierSim {
 // Score returns a detectability score in [0,1], where 1 means highly detectable.
 // It uses a naive model: lower entropy and regular timing => higher score.
 func (s *SimpleClassifierSim) Score(payloadEntropy float64, jitterMs float64) float64 {
-	// payloadEntropy expected in [0..8] bits/byte approx; map to [0..1]
 	e := payloadEntropy / 8.0
 	if e < 0 {
 		e = 0
@@ -29,7 +28,7 @@ func (s *SimpleClassifierSim) Score(payloadEntropy float64, jitterMs float64) fl
 		e = 1
 	}
 
-	t := jitterMs / 50.0 // normalize: 50ms is moderate jitter
+	t := jitterMs / 50.0
 	if t < 0 {
 		t = 0
 	}
@@ -37,10 +36,7 @@ func (s *SimpleClassifierSim) Score(payloadEntropy float64, jitterMs float64) fl
 		t = 1
 	}
 
-	// base detectability reduces with entropy and increases with timing regularity
-	base := (1.0 - e)*0.7 + (1.0-t)*0.3
-
-	// add some randomness
+	base := (1.0-e)*0.7 + (1.0-t)*0.3
 	noise := s.rng.Float64() * 0.1
 	score := base + noise
 	if score > 1 {
