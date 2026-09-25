@@ -222,3 +222,63 @@ func TestAdaptiveDialerSkipsDirectWhenAllDPIStrategiesRecentlyFailed(t *testing.
 		t.Fatalf("expected direct cooldown to start with relay endpoint, got %q", firstDial)
 	}
 }
+
+
+func TestAdaptiveDialerLearnsDirectBlackholeFromFirstResponseTimeout(t *testing.T) {
+	carrierEngine, err := carrier.NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dpiEngine, err := dpi.NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := planner.New(carrierEngine, dpiEngine)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dialer := &AdaptiveDialer{
+		Planner:                  p,
+		Carriers:                 []carrier.Candidate{{Name: "direct", Kind: carrier.KindDirect, SupportsTCP: true}},
+		DPIStrategies:            dpi.DefaultStrategies(),
+		Timeout:                  time.Second,
+		ApplicationFailureWindow: 40 * time.Millisecond,
+		Network: func() (networkctx.Context, error) {
+			return networkctx.Context{ID: "mobile-blackhole"}, nil
+		},
+		DirectDial: func(context.Context, string) (net.Conn, error) {
+			clientSide, serverSide := net.Pipe()
+			go func() {
+				buf := make([]byte, 64)
+				_, _ = serverSide.Read(buf)
+				time.Sleep(200 * time.Millisecond)
+				_ = serverSide.Close()
+			}()
+			return clientSide, nil
+		},
+	}
+
+	conn, err := dialer.DialContext(context.Background(), "example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Write([]byte("client-hello-like-data")); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := make([]byte, 1)
+	if _, err := conn.Read(buf); err == nil {
+		t.Fatal("expected first-response timeout")
+	}
+	_ = conn.Close()
+
+	stats := dpiEngine.Snapshot(dpi.Context{
+		NetworkID:    "mobile-blackhole",
+		Destination:  "example.com:443",
+		TrafficClass: "web",
+	})["direct"]
+	if stats.Failures != 1 {
+		t.Fatalf("expected blackhole to be learned as DPI failure, got %+v", stats)
+	}
+}
