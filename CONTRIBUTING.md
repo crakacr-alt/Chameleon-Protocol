@@ -1,19 +1,41 @@
 # Contributing
 
-Thanks for helping improve Chameleon Protocol.
+Chameleon Protocol — исследовательский проект. Изменения лучше делать маленькими,
+чтобы их можно было проверить отдельным тестом.
 
-## Development workflow
+## Перед pull request
 
-1. fork the repository
-2. create a feature branch
-3. make your changes
-4. run `gofmt -w ./...`
-5. run `go test ./...`
-6. open a pull request with a concise description
+```bash
+gofmt -w .
+go vet ./...
+go test -race ./...
+go build ./...
+```
 
-## Code style
+## Что приложить к PR
 
-- prefer small, idiomatic Go code
-- keep the transport logic readable and explicit
-- use `if err != nil` error handling consistently
-- add regression tests for protocol behavior changes
+- что именно изменилось;
+- зачем это нужно;
+- какой тест ловит старую ошибку или проверяет новое поведение;
+- меняется ли формат данных, handshake или persistent state;
+- нужно ли обновить README/CHANGELOG.
+
+## Стиль кода
+
+- простые функции вместо лишних уровней абстракции;
+- обычный `if err != nil`;
+- комментарий нужен там, где без него непонятно **почему** код сделан именно так;
+- не прятать ошибки через `panic` внутри библиотечных пакетов;
+- изменения concurrent state должны проходить `go test -race`.
+
+## Изменения security-sensitive кода
+
+Если меняются identity, ключи, frame parsing, persistent stores или session state:
+
+1. добавить regression test;
+2. проверить ошибочные/повреждённые входы;
+3. не ослаблять fail-closed поведение;
+4. обновить `SECURITY.md`, если меняется модель доверия.
+
+Новые утверждения о безопасности нельзя добавлять в README только потому, что
+один локальный тест прошёл.
