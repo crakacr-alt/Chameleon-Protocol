@@ -18,7 +18,7 @@ type Route struct {
 // Store persists a small set of learned routes to disk.
 type Store struct {
 	mu     sync.Mutex
-	Path   string           `json:"path"`
+	Path   string           `json:"-"`
 	Routes map[string]Route `json:"routes"`
 }
 
@@ -49,6 +49,10 @@ func (s *Store) Save() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.saveLocked()
+}
+
+func (s *Store) saveLocked() error {
 	payload, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal routes: %w", err)
@@ -70,7 +74,7 @@ func (s *Store) Upsert(dst, profile string, lastUsed int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Routes[dst] = Route{Destination: dst, Profile: profile, LastUsed: lastUsed}
-	return s.Save()
+	return s.saveLocked()
 }
 
 // Get returns the route for the destination if known.
