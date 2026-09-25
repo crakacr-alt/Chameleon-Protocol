@@ -27,8 +27,8 @@ func main() {
 	}
 
 	server, err := tunnel.NewServer(tunnel.ServerConfig{
-		PSK:              *psk,
-		HandshakeTimeout: *handshakeTimeout,
+		PSK:                      *psk,
+		HandshakeTimeout:         *handshakeTimeout,
 		DialTimeout:              *dialTimeout,
 		AllowPrivateDestinations: *allowPrivate,
 	})
