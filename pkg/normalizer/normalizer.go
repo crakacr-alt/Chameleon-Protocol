@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Hack2p/chameleon/pkg/core"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
 )
 
 // Normalizer exposes a small interface for packet normalization so other
