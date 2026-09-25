@@ -21,13 +21,17 @@ func main() {
 	allowPrivate := flag.Bool("allow-private", false, "allow tunnel egress to private/loopback server networks")
 	flag.Parse()
 
-	if *psk == "" {
-		fmt.Fprintln(os.Stderr, "error: --psk is required")
+	tunnelPSK := *psk
+	if tunnelPSK == "" {
+		tunnelPSK = os.Getenv("CHAMELEON_TUNNEL_PSK")
+	}
+	if tunnelPSK == "" {
+		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required")
 		os.Exit(2)
 	}
 
 	server, err := tunnel.NewServer(tunnel.ServerConfig{
-		PSK:                      *psk,
+		PSK:                      tunnelPSK,
 		HandshakeTimeout:         *handshakeTimeout,
 		DialTimeout:              *dialTimeout,
 		AllowPrivateDestinations: *allowPrivate,
