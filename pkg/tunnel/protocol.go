@@ -1,13 +1,13 @@
 package tunnel
 
 import (
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,11 +16,10 @@ import (
 )
 
 const (
-	helloMagic        = "CHT1"
 	helloVersion byte = 1
 	nonceSize         = 32
-	tagSize           = 32
 	maxDestinationLen = 1024
+	maxHelloCipher    = 2048
 )
 
 type clientHello struct {
@@ -29,6 +28,8 @@ type clientHello struct {
 	Destination string
 }
 
+// buildClientHello keeps the destination and timestamp encrypted.
+// The only fixed-size clear field is a random per-connection salt used for KDF.
 func buildClientHello(psk, destination string, now time.Time) ([]byte, [nonceSize]byte, error) {
 	var nonce [nonceSize]byte
 	if strings.TrimSpace(psk) == "" {
@@ -42,17 +43,28 @@ func buildClientHello(psk, destination string, now time.Time) ([]byte, [nonceSiz
 	}
 
 	dest := []byte(destination)
-	prefixLen := 4 + 1 + 8 + nonceSize + 2 + len(dest)
-	buf := make([]byte, prefixLen+tagSize)
-	copy(buf[:4], helloMagic)
-	buf[4] = helloVersion
-	binary.BigEndian.PutUint64(buf[5:13], uint64(now.Unix()))
-	copy(buf[13:13+nonceSize], nonce[:])
-	binary.BigEndian.PutUint16(buf[13+nonceSize:15+nonceSize], uint16(len(dest)))
-	copy(buf[15+nonceSize:prefixLen], dest)
+	plain := make([]byte, 1+8+2+len(dest))
+	plain[0] = helloVersion
+	binary.BigEndian.PutUint64(plain[1:9], uint64(now.Unix()))
+	binary.BigEndian.PutUint16(plain[9:11], uint16(len(dest)))
+	copy(plain[11:], dest)
 
-	tag := helloMAC(psk, buf[:prefixLen])
-	copy(buf[prefixLen:], tag)
+	cipher, err := deriveCipher(psk, nonce)
+	if err != nil {
+		return nil, nonce, err
+	}
+	encrypted, err := cipher.Seal(plain)
+	if err != nil {
+		return nil, nonce, fmt.Errorf("encrypt tunnel hello: %w", err)
+	}
+	if len(encrypted) > maxHelloCipher {
+		return nil, nonce, fmt.Errorf("encrypted tunnel hello too large")
+	}
+
+	buf := make([]byte, nonceSize+2+len(encrypted))
+	copy(buf[:nonceSize], nonce[:])
+	binary.BigEndian.PutUint16(buf[nonceSize:nonceSize+2], uint16(len(encrypted)))
+	copy(buf[nonceSize+2:], encrypted)
 	return buf, nonce, nil
 }
 
@@ -62,36 +74,40 @@ func readClientHello(r io.Reader, psk string, now time.Time, maxSkew time.Durati
 		return hello, fmt.Errorf("psk must not be empty")
 	}
 
-	fixed := make([]byte, 4+1+8+nonceSize+2)
+	fixed := make([]byte, nonceSize+2)
 	if _, err := io.ReadFull(r, fixed); err != nil {
 		return hello, fmt.Errorf("read tunnel hello: %w", err)
 	}
-	if string(fixed[:4]) != helloMagic || fixed[4] != helloVersion {
+	copy(hello.Nonce[:], fixed[:nonceSize])
+	encryptedLen := int(binary.BigEndian.Uint16(fixed[nonceSize : nonceSize+2]))
+	if encryptedLen <= 0 || encryptedLen > maxHelloCipher {
+		return hello, fmt.Errorf("invalid encrypted hello length")
+	}
+
+	encrypted := make([]byte, encryptedLen)
+	if _, err := io.ReadFull(r, encrypted); err != nil {
+		return hello, fmt.Errorf("read encrypted tunnel hello: %w", err)
+	}
+	cipher, err := deriveCipher(psk, hello.Nonce)
+	if err != nil {
+		return hello, err
+	}
+	plain, err := cipher.Open(encrypted)
+	if err != nil {
+		return hello, fmt.Errorf("invalid tunnel authentication")
+	}
+	if len(plain) < 11 || plain[0] != helloVersion {
 		return hello, fmt.Errorf("invalid tunnel hello")
 	}
 
-	hello.Timestamp = int64(binary.BigEndian.Uint64(fixed[5:13]))
-	copy(hello.Nonce[:], fixed[13:13+nonceSize])
-	destLen := int(binary.BigEndian.Uint16(fixed[13+nonceSize : 15+nonceSize]))
-	if destLen <= 0 || destLen > maxDestinationLen {
+	hello.Timestamp = int64(binary.BigEndian.Uint64(plain[1:9]))
+	destLen := int(binary.BigEndian.Uint16(plain[9:11]))
+	if destLen <= 0 || destLen > maxDestinationLen || len(plain) != 11+destLen {
 		return hello, fmt.Errorf("invalid destination length")
 	}
-
-	tail := make([]byte, destLen+tagSize)
-	if _, err := io.ReadFull(r, tail); err != nil {
-		return hello, fmt.Errorf("read tunnel hello tail: %w", err)
-	}
-	hello.Destination = string(tail[:destLen])
+	hello.Destination = string(plain[11:])
 	if err := validateDestination(hello.Destination); err != nil {
 		return hello, err
-	}
-
-	signed := make([]byte, 0, len(fixed)+destLen)
-	signed = append(signed, fixed...)
-	signed = append(signed, tail[:destLen]...)
-	want := helloMAC(psk, signed)
-	if !hmac.Equal(want, tail[destLen:]) {
-		return hello, fmt.Errorf("invalid tunnel authentication")
 	}
 
 	if maxSkew <= 0 {
@@ -109,12 +125,6 @@ func readClientHello(r io.Reader, psk string, now time.Time, maxSkew time.Durati
 	return hello, nil
 }
 
-func helloMAC(psk string, payload []byte) []byte {
-	mac := hmac.New(sha256.New, []byte(psk))
-	_, _ = mac.Write(payload)
-	return mac.Sum(nil)
-}
-
 func deriveCipher(psk string, nonce [nonceSize]byte) (*chcrypto.Cipher, error) {
 	reader := hkdf.New(sha256.New, []byte(psk), nonce[:], []byte("chameleon/tunnel/v1"))
 	key := make([]byte, 32)
@@ -125,12 +135,16 @@ func deriveCipher(psk string, nonce [nonceSize]byte) (*chcrypto.Cipher, error) {
 }
 
 func validateDestination(destination string) error {
-	host, port, err := net.SplitHostPort(strings.TrimSpace(destination))
+	host, portText, err := net.SplitHostPort(strings.TrimSpace(destination))
 	if err != nil {
 		return fmt.Errorf("destination must be host:port: %w", err)
 	}
-	if strings.TrimSpace(host) == "" || strings.TrimSpace(port) == "" {
+	if strings.TrimSpace(host) == "" || strings.TrimSpace(portText) == "" {
 		return fmt.Errorf("destination must contain host and port")
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port <= 0 || port > 65535 {
+		return fmt.Errorf("destination port is invalid")
 	}
 	if len(destination) > maxDestinationLen {
 		return fmt.Errorf("destination is too long")
