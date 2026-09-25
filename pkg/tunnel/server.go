@@ -15,9 +15,9 @@ type DialContextFunc func(context.Context, string, string) (net.Conn, error)
 
 // ServerConfig configures the authenticated TCP tunnel server.
 type ServerConfig struct {
-	PSK              string
-	HandshakeTimeout time.Duration
-	DialTimeout      time.Duration
+	PSK                      string
+	HandshakeTimeout         time.Duration
+	DialTimeout              time.Duration
 	MaxClockSkew             time.Duration
 	AllowPrivateDestinations bool
 	DialContext              DialContextFunc
@@ -101,6 +101,14 @@ func (s *Server) HandleConn(ctx context.Context, conn net.Conn) error {
 	}
 	secure := newSecureConn(conn, cipher)
 
+	if !s.cfg.AllowPrivateDestinations {
+		if err := rejectPrivateDestinationLiteral(hello.Destination); err != nil {
+			message := append([]byte{1}, []byte("destination is not allowed")...)
+			_, _ = secure.Write(message)
+			return err
+		}
+	}
+
 	upstreamCtx, cancel := context.WithTimeout(ctx, s.cfg.DialTimeout)
 	defer cancel()
 	upstream, err := s.cfg.DialContext(upstreamCtx, "tcp", hello.Destination)
@@ -170,6 +178,17 @@ func isClosedError(err error) bool {
 	return err == nil || errors.Is(err, net.ErrClosed)
 }
 
+func rejectPrivateDestinationLiteral(destination string) error {
+	host, _, err := net.SplitHostPort(destination)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil
+	}
+	return rejectPrivateIP(ip)
+}
 
 func rejectPrivateRemote(addr net.Addr) error {
 	var ip net.IP
@@ -186,6 +205,10 @@ func rejectPrivateRemote(addr net.Addr) error {
 	if ip == nil {
 		return nil
 	}
+	return rejectPrivateIP(ip)
+}
+
+func rejectPrivateIP(ip net.IP) error {
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
 		return fmt.Errorf("private destination %s is blocked by default", ip)
