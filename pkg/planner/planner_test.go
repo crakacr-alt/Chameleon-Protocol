@@ -119,7 +119,6 @@ func TestPlannerKeepsNetworkLearningSeparate(t *testing.T) {
 	}
 }
 
-
 func TestDPIFailureKeepsDirectCarrierAndEscalatesStrategy(t *testing.T) {
 	p := newTestPlanner(t)
 	req := Request{
