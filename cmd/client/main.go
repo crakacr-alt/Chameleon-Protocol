@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 	"path/filepath"
+	"time"
 
-	"github.com/Hack2p/chameleon/pkg/core"
-	chcrypto "github.com/Hack2p/chameleon/pkg/crypto"
-	idstore "github.com/Hack2p/chameleon/pkg/identity"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
+	chcrypto "github.com/crakacr-alt/Chameleon-Protocol/pkg/crypto"
+	idstore "github.com/crakacr-alt/Chameleon-Protocol/pkg/identity"
 )
 
 func main() {
@@ -20,46 +20,43 @@ func main() {
 	payload := flag.String("payload", "hello-chameleon", "payload to normalize")
 	profile := flag.String("profile", string(core.ProfileWebRTC), "traffic profile: webrtc, http3, gaming")
 	burst := flag.Int("burst", 1, "number of shaped packets to send")
-	psk := flag.String("psk", "research-secret", "shared secret for optional AEAD encryption")
+	psk := flag.String("psk", "research-secret", "legacy shared secret used when authenticated handshake is disabled")
 	adaptiveStorePath := flag.String("adaptive-store", "", "optional path to a JSON learner state file")
 	sessionMemoryPath := flag.String("session-memory", "", "optional path to a JSON session-memory file")
-
-	// new flags for demoing authenticated handshake and identity registry
-	identity := flag.String("identity", "", "optional identity name to register")
-	idStorePath := flag.String("id-store", "identity.json", "path to local identity store (JSON)")
-	sendHandshake := flag.Bool("send-handshake", false, "if true, send signed X25519 public to target as JSON")
-
+	identity := flag.String("identity", "", "persistent client identity name")
+	idStorePath := flag.String("id-store", "identity.json", "TOFU identity store path")
+	sendHandshake := flag.Bool("send-handshake", false, "perform authenticated X25519+Ed25519 session bootstrap")
 	flag.Parse()
 
-	// If identity is provided, create or load persistent Ed25519 key via KeyManager
-	var ah *chcrypto.AuthHandshake
+	var (
+		handshake *chcrypto.AuthHandshake
+		store     *idstore.Store
+	)
+
 	if *identity != "" {
-		// ensure id store exists
-		store, err := idstore.NewStore(*idStorePath)
+		var err error
+		store, err = idstore.NewStore(*idStorePath)
 		if err != nil {
 			panic(err)
 		}
-		// determine key path next to the id store (e.g., identity.key)
-		keyPath := "" 
-		if *idStorePath == "" {
-			keyPath = *identity + ".key"
-		} else {
-			keyPath = filepath.Join(filepath.Dir(*idStorePath), *identity+".key")
-		}
+
+		keyPath := filepath.Join(filepath.Dir(*idStorePath), *identity+".key")
 		km, err := chcrypto.NewKeyManager(keyPath)
 		if err != nil {
 			panic(err)
 		}
-		ah, err = chcrypto.NewAuthHandshakeWithKeyManager(km)
+
+		handshake, err = chcrypto.NewAuthHandshakeWithKeyManager(km)
 		if err != nil {
 			panic(err)
 		}
-		edpub := base64.StdEncoding.EncodeToString(km.Public())
-		if err := store.Register(*identity, edpub); err != nil {
-			// non-fatal: continue
-			fmt.Printf("warning: register identity: %v\n", err)
+
+		clientPub := base64.StdEncoding.EncodeToString(km.Public())
+		if _, err := store.RegisterOrVerify(*identity, clientPub); err != nil {
+			panic(err)
 		}
-		fmt.Printf("loaded identity %s pub=%s (key=%s)\n", *identity, edpub, keyPath)
+
+		fmt.Printf("loaded identity %s (key=%s)\n", *identity, keyPath)
 	}
 
 	conn, err := net.Dial("udp", *target)
@@ -68,85 +65,91 @@ func main() {
 	}
 	defer conn.Close()
 
-	if *sendHandshake {
-		if ah == nil {
-			fmt.Fprintln(os.Stderr, "send-handshake requires --identity to be set")
-			os.Exit(1)
-		}
-		// prepare handshake message
-		xpub := base64.StdEncoding.EncodeToString(ah.X25519Public())
-		edpub := base64.StdEncoding.EncodeToString(ah.Ed25519Public())
-		sig, err := ah.SignX25519()
-		if err != nil {
-			panic(err)
-		}
-		sigb := base64.StdEncoding.EncodeToString(sig)
+	var sessionCipher *chcrypto.Cipher
 
-		msg := map[string]string{
-			"identity": *identity,
-			"x25519":   xpub,
-			"ed25519":  edpub,
-			"sig":      sigb,
+	if *sendHandshake {
+		if handshake == nil || store == nil {
+			fmt.Fprintln(os.Stderr, "--send-handshake requires --identity")
+			os.Exit(2)
 		}
-		data, err := json.Marshal(msg)
+
+		clientXpub := handshake.X25519Public()
+		clientSig, err := handshake.SignX25519()
 		if err != nil {
 			panic(err)
 		}
+
+		message := map[string]string{
+			"identity": *identity,
+			"x25519":   base64.StdEncoding.EncodeToString(clientXpub),
+			"ed25519":  base64.StdEncoding.EncodeToString(handshake.Ed25519Public()),
+			"sig":      base64.StdEncoding.EncodeToString(clientSig),
+		}
+
+		data, err := json.Marshal(message)
+		if err != nil {
+			panic(err)
+		}
+
 		if _, err := conn.Write(data); err != nil {
 			panic(err)
 		}
-		fmt.Printf("sent signed handshake to %s\n", *target)
 
-		// wait short time for server response (synchronous demo)
-		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-		resp := make([]byte, 2048)
-		n, err := conn.Read(resp)
-		if err == nil && n > 0 {
-			var r map[string]string
-			if err := json.Unmarshal(resp[:n], &r); err == nil {
-				fmt.Printf("received server handshake: %+v\n", r)
-				// if server provided ed25519 pub, we can start rekey
-				if r["ed25519"] != "" {
-					// prepare rekey message to agree on epoch key
-					km, err := chcrypto.NewKeyManager(*idStorePath + "/client.key")
-					if err != nil {
-						fmt.Printf("keymanager error: %v\n", err)
-					} else {
-						epochID := []byte("epoch-" + fmt.Sprint(time.Now().Unix()/30))
-						rekeyMsg, _ := chcrypto.CreateRekeyMessage(km, epochID, "info")
-						rm, _ := json.Marshal(rekeyMsg)
-						if _, err := conn.Write(rm); err == nil {
-							fmt.Printf("sent rekey message to %s\n", *target)
-						}
-							// read server rekey response
-							n2, err := conn.Read(resp)
-							if err == nil && n2 > 0 {
-								var rmResp chcrypto.RekeyMessage
-								if err := json.Unmarshal(resp[:n2], &rmResp); err == nil {
-									peerPub, _ := base64.StdEncoding.DecodeString(r["ed25519"])
-									epoch, verr := chcrypto.VerifyRekeyMessage(&rmResp, peerPub)
-									if verr == nil {
-										// derive symmetric key locally using KeyManager
-										sk, _ := km.GetEpochKey(epoch, 32)
-										aead, _ := chcrypto.NewCipherFromKey(sk)
-										// send ack back to server to confirm installation
-										ack, _ := chcrypto.CreateRekeyAck(km, epoch, km.Public())
-										ackb, _ := json.Marshal(ack)
-										if _, err := conn.Write(ackb); err == nil {
-											fmt.Printf("sent rekey ack to server and installed new key\n")
-											// here we would swap transport cipher atomically
-											_ = aead
-										}
-									}
-								}
-							}
-					}
-				}
-			}
+		if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+			panic(err)
 		}
+
+		response := make([]byte, 4096)
+		n, err := conn.Read(response)
+		if err != nil {
+			panic(fmt.Errorf("read server handshake: %w", err))
+		}
+		_ = conn.SetReadDeadline(time.Time{})
+
+		var serverMessage map[string]string
+		if err := json.Unmarshal(response[:n], &serverMessage); err != nil {
+			panic(fmt.Errorf("decode server handshake: %w", err))
+		}
+		if serverMessage["identity"] != "server" {
+			panic("unexpected server identity")
+		}
+
+		serverXpub, err := base64.StdEncoding.DecodeString(serverMessage["x25519"])
+		if err != nil {
+			panic(fmt.Errorf("decode server x25519 key: %w", err))
+		}
+		serverEdPub, err := base64.StdEncoding.DecodeString(serverMessage["ed25519"])
+		if err != nil {
+			panic(fmt.Errorf("decode server ed25519 key: %w", err))
+		}
+		serverSig, err := base64.StdEncoding.DecodeString(serverMessage["sig"])
+		if err != nil {
+			panic(fmt.Errorf("decode server signature: %w", err))
+		}
+
+		if _, err := store.RegisterOrVerify("server", serverMessage["ed25519"]); err != nil {
+			panic(fmt.Errorf("server identity pin check failed: %w", err))
+		}
+
+		sharedSecret, err := handshake.DeriveSharedSecret(serverXpub, serverEdPub, serverSig)
+		if err != nil {
+			panic(fmt.Errorf("authenticated key exchange failed: %w", err))
+		}
+
+		context := chcrypto.SessionContext(clientXpub, serverXpub)
+		sessionKey, err := chcrypto.DeriveSessionKey(sharedSecret, context, 32)
+		if err != nil {
+			panic(fmt.Errorf("derive session key: %w", err))
+		}
+
+		sessionCipher, err = chcrypto.NewCipherFromKey(sessionKey)
+		if err != nil {
+			panic(fmt.Errorf("create session cipher: %w", err))
+		}
+
+		fmt.Printf("authenticated session established with %s\n", *target)
 	}
 
-	// legacy shaped send
 	transport, err := core.NewTransport(conn, core.Config{
 		Profile:           core.BehaviorProfile(*profile),
 		SharedSecret:      *psk,
@@ -155,6 +158,10 @@ func main() {
 	})
 	if err != nil {
 		panic(err)
+	}
+
+	if sessionCipher != nil {
+		transport.UpdateCipher(sessionCipher)
 	}
 
 	if err := transport.SendBurst([]byte(*payload), *burst); err != nil {

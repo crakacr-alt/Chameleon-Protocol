@@ -3,7 +3,7 @@ package experiment
 import (
 	"fmt"
 
-	"github.com/Hack2p/chameleon/pkg/core"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
 )
 
 // CompareProfiles runs a small multi-scenario comparison and returns a map

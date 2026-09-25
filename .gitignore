@@ -10,3 +10,8 @@ obj/
 *.key
 identity_store.json
 server.key
+chameleon-client.exe
+server.exe
+chameleon-server
+client_identity.json
+data/identity.json

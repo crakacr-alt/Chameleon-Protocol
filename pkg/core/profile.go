@@ -3,7 +3,7 @@ package core
 import (
 	"time"
 
-	"github.com/Hack2p/chameleon/pkg/morph"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/morph"
 )
 
 // BehaviorProfile selects the traffic template the wrapper should emulate.

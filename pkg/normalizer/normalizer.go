@@ -1,10 +1,10 @@
 package normalizer
 
 import (
-	"fmt"
+	"errors"
 	"time"
 
-	"github.com/Hack2p/chameleon/pkg/core"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
 )
 
 // Normalizer exposes a small interface for packet normalization so other
@@ -13,7 +13,7 @@ type Normalizer interface {
 	NormalizePacket(payload []byte) ([]byte, time.Duration, error)
 }
 
-type wrapper struct{
+type wrapper struct {
 	n *core.Normalizer
 }
 
@@ -28,10 +28,7 @@ func NewNormalizer(cfg core.Config) (Normalizer, error) {
 
 func (w *wrapper) NormalizePacket(payload []byte) ([]byte, time.Duration, error) {
 	if w == nil || w.n == nil {
-		return nil, 0, fmtError("normalizer not initialized")
+		return nil, 0, errors.New("normalizer not initialized")
 	}
 	return w.n.NormalizePacket(payload)
 }
-
-// small helper to avoid importing fmt in many places
-func fmtError(msg string) error { return fmt.Errorf(msg) }

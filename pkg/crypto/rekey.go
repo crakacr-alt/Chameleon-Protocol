@@ -1,15 +1,15 @@
 package crypto
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
-	"crypto/ed25519"
 )
 
 // RekeyMessage is the signed payload sent between peers to initiate a key swap.
 type RekeyMessage struct {
 	EpochID string `json:"epoch_id"`
-	KeyInfo string `json:"key_info"` // optional info
+	KeyInfo string `json:"key_info"`
 	Sig     string `json:"sig"`
 }
 
@@ -25,12 +25,21 @@ func CreateRekeyAck(km *KeyManager, epochID []byte, serverPub []byte) (*RekeyAck
 	if km == nil {
 		return nil, fmt.Errorf("key manager required")
 	}
-	payload := append(epochID, serverPub...)
+
+	payload := make([]byte, 0, len(epochID)+len(serverPub))
+	payload = append(payload, epochID...)
+	payload = append(payload, serverPub...)
+
 	sig, err := km.Sign(payload)
 	if err != nil {
 		return nil, fmt.Errorf("sign rekey ack: %w", err)
 	}
-	return &RekeyAck{EpochID: base64.StdEncoding.EncodeToString(epochID), Server: base64.StdEncoding.EncodeToString(serverPub), Sig: base64.StdEncoding.EncodeToString(sig)}, nil
+
+	return &RekeyAck{
+		EpochID: base64.StdEncoding.EncodeToString(epochID),
+		Server:  base64.StdEncoding.EncodeToString(serverPub),
+		Sig:     base64.StdEncoding.EncodeToString(sig),
+	}, nil
 }
 
 // VerifyRekeyAck verifies a RekeyAck using peer public key and returns epochID.
@@ -38,6 +47,10 @@ func VerifyRekeyAck(msg *RekeyAck, peerPub []byte) ([]byte, error) {
 	if msg == nil {
 		return nil, fmt.Errorf("nil ack")
 	}
+	if len(peerPub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid peer public key size")
+	}
+
 	epochID, err := base64.StdEncoding.DecodeString(msg.EpochID)
 	if err != nil {
 		return nil, fmt.Errorf("decode epoch id: %w", err)
@@ -50,10 +63,15 @@ func VerifyRekeyAck(msg *RekeyAck, peerPub []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode sig: %w", err)
 	}
-	payload := append(epochID, serverPub...)
+
+	payload := make([]byte, 0, len(epochID)+len(serverPub))
+	payload = append(payload, epochID...)
+	payload = append(payload, serverPub...)
+
 	if !ed25519.Verify(ed25519.PublicKey(peerPub), payload, sig) {
 		return nil, fmt.Errorf("rekey ack verification failed")
 	}
+
 	return epochID, nil
 }
 
@@ -62,12 +80,21 @@ func CreateRekeyMessage(km *KeyManager, epochID []byte, keyInfo string) (*RekeyM
 	if km == nil {
 		return nil, fmt.Errorf("key manager required")
 	}
-	payload := append(epochID, []byte(keyInfo)...)
+
+	payload := make([]byte, 0, len(epochID)+len(keyInfo))
+	payload = append(payload, epochID...)
+	payload = append(payload, keyInfo...)
+
 	sig, err := km.Sign(payload)
 	if err != nil {
 		return nil, fmt.Errorf("sign rekey payload: %w", err)
 	}
-	return &RekeyMessage{EpochID: base64.StdEncoding.EncodeToString(epochID), KeyInfo: keyInfo, Sig: base64.StdEncoding.EncodeToString(sig)}, nil
+
+	return &RekeyMessage{
+		EpochID: base64.StdEncoding.EncodeToString(epochID),
+		KeyInfo: keyInfo,
+		Sig:     base64.StdEncoding.EncodeToString(sig),
+	}, nil
 }
 
 // VerifyRekeyMessage verifies a rekey message using peer's public key.
@@ -75,6 +102,10 @@ func VerifyRekeyMessage(msg *RekeyMessage, peerPub []byte) ([]byte, error) {
 	if msg == nil {
 		return nil, fmt.Errorf("nil message")
 	}
+	if len(peerPub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid peer public key size")
+	}
+
 	epochID, err := base64.StdEncoding.DecodeString(msg.EpochID)
 	if err != nil {
 		return nil, fmt.Errorf("decode epoch id: %w", err)
@@ -83,9 +114,14 @@ func VerifyRekeyMessage(msg *RekeyMessage, peerPub []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode sig: %w", err)
 	}
-	payload := append(epochID, []byte(msg.KeyInfo)...)
+
+	payload := make([]byte, 0, len(epochID)+len(msg.KeyInfo))
+	payload = append(payload, epochID...)
+	payload = append(payload, msg.KeyInfo...)
+
 	if !ed25519.Verify(ed25519.PublicKey(peerPub), payload, sig) {
 		return nil, fmt.Errorf("rekey signature verification failed")
 	}
+
 	return epochID, nil
 }

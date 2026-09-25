@@ -1,14 +1,14 @@
 package identity
 
 import (
-	"encoding/json"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
-	"crypto/ed25519"
-	"crypto/rand"
 )
 
 // Store provides a tiny identity registry persisted as JSON.
@@ -27,36 +27,32 @@ func (s *Store) LoadOrCreateIdentity(id string) (string, error) {
 	if id == "" {
 		return "", fmt.Errorf("id must not be empty")
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// file path is store dir + id.key
 	keyPath := filepath.Join(filepath.Dir(s.Path), id+".key")
 	if data, err := os.ReadFile(keyPath); err == nil && len(data) > 0 {
-		// data is base64-encoded private key
 		raw, err := base64.StdEncoding.DecodeString(string(data))
 		if err != nil {
 			return "", fmt.Errorf("decode private key: %w", err)
 		}
-		// public key is last 32 bytes of ed25519 private key
-		if len(raw) >= 32 {
-			pub := raw[len(raw)-32:]
-			return base64.StdEncoding.EncodeToString(pub), nil
+		if len(raw) != ed25519.PrivateKeySize {
+			return "", fmt.Errorf("invalid private key size")
 		}
-		return "", fmt.Errorf("invalid private key size")
+		pub := ed25519.PrivateKey(raw).Public().(ed25519.PublicKey)
+		return base64.StdEncoding.EncodeToString(pub), nil
 	}
 
-	// Create identity by delegating to KeyManager if available.
-	// For now, generate a new ed25519 key and save it as base64 private key.
-	// Note: this is a minimal bootstrap; in production use KeyManager.
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return "", fmt.Errorf("generate ed25519 key: %w", err)
 	}
-	enc := base64.StdEncoding.EncodeToString([]byte(priv))
-	if err := os.WriteFile(keyPath, []byte(enc), 0o600); err != nil {
+	encoded := base64.StdEncoding.EncodeToString([]byte(priv))
+	if err := os.WriteFile(keyPath, []byte(encoded), 0o600); err != nil {
 		return "", fmt.Errorf("write identity key: %w", err)
 	}
+
 	return base64.StdEncoding.EncodeToString(pub), nil
 }
 
@@ -68,6 +64,7 @@ func NewStore(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir store dir: %w", err)
 	}
+
 	s := &Store{Path: path, IdMap: make(map[string]string)}
 	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
 		if err := json.Unmarshal(data, s); err != nil {
@@ -77,10 +74,12 @@ func NewStore(path string) (*Store, error) {
 			s.IdMap = make(map[string]string)
 		}
 	}
+
 	return s, nil
 }
 
 // Register adds or updates an identity mapping and persists the store.
+// Prefer RegisterOrVerify for network peers.
 func (s *Store) Register(id, pub string) error {
 	if s == nil {
 		return fmt.Errorf("store is nil")
@@ -88,10 +87,41 @@ func (s *Store) Register(id, pub string) error {
 	if id == "" || pub == "" {
 		return fmt.Errorf("id and pub must not be empty")
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.IdMap[id] = pub
 	return s.saveLocked()
+}
+
+// RegisterOrVerify implements trust-on-first-use pinning.
+// It stores the first observed key and rejects silent key replacement later.
+func (s *Store) RegisterOrVerify(id, pub string) (bool, error) {
+	if s == nil {
+		return false, fmt.Errorf("store is nil")
+	}
+	if id == "" || pub == "" {
+		return false, fmt.Errorf("id and pub must not be empty")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if existing, ok := s.IdMap[id]; ok {
+		if existing != pub {
+			return false, fmt.Errorf("identity %q key mismatch", id)
+		}
+		return false, nil
+	}
+
+	s.IdMap[id] = pub
+	if err := s.saveLocked(); err != nil {
+		delete(s.IdMap, id)
+		return false, err
+	}
+
+	return true, nil
 }
 
 // Lookup returns the stored public key for an identity.
@@ -99,16 +129,19 @@ func (s *Store) Lookup(id string) (string, bool) {
 	if s == nil {
 		return "", false
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v, ok := s.IdMap[id]
-	return v, ok
+
+	value, ok := s.IdMap[id]
+	return value, ok
 }
 
 func (s *Store) saveLocked() error {
 	if s == nil {
 		return fmt.Errorf("store is nil")
 	}
+
 	payload, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal store: %w", err)
@@ -116,5 +149,6 @@ func (s *Store) saveLocked() error {
 	if err := os.WriteFile(s.Path, payload, 0o644); err != nil {
 		return fmt.Errorf("write store: %w", err)
 	}
+
 	return nil
 }

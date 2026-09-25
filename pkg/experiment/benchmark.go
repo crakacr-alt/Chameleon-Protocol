@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Hack2p/chameleon/pkg/core"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
 )
 
 // Metrics collects observable transport characteristics for a benchmark run.

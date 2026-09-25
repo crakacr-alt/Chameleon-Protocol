@@ -1,4 +1,4 @@
-module github.com/Hack2p/chameleon
+module github.com/crakacr-alt/Chameleon-Protocol
 
 go 1.22
 

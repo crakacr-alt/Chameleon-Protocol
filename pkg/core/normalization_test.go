@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	chameleoncrypto "github.com/Hack2p/chameleon/pkg/crypto"
+	chameleoncrypto "github.com/crakacr-alt/Chameleon-Protocol/pkg/crypto"
 )
 
 func TestTransportFrameRoundTripWithEncryption(t *testing.T) {

@@ -1,6 +1,6 @@
 # Chameleon Protocol
 
-Chameleon Protocol — исследовательский адаптивный transport-стек для нормализации сетевых потоков. Цель проекта: обеспечить управляемую непредсказуемость трафика для тестирования устойчивости сетевых фильтров и классификаторов. Этот коммит улучшил архитектуру: добавлен authenticated handshake (Ed25519 + X25519), persistent identity store, route store, расширен state-sync для ротации профилей по epoch и введён стабильный pkg/normalizer API.
+Chameleon Protocol — исследовательский адаптивный transport-стек для нормализации сетевых потоков. Цель проекта: обеспечить управляемую непредсказуемость трафика для тестирования устойчивости сетевых фильтров и классификаторов. Текущая версия включает экспериментальный authenticated handshake (Ed25519 + X25519), TOFU-пиннинг identity, peer-shared session key через HKDF, persistent identity/route stores, state-sync для ротации профилей по epoch и стабильный pkg/normalizer API.
 
 ## Что уже сделано
 
@@ -16,22 +16,16 @@ Chameleon Protocol — исследовательский адаптивный t
 
 Что улучшено в этом релизе:
 
-- Добавлен authenticated handshake: Ed25519 подпись X25519 public для предотвращения MITM без сложной PKI.
-- Добавлен pkg/identity: простой JSON-backed store для сопоставления identity -> Ed25519 pubkey.
+- Добавлен authenticated handshake: Ed25519 подписывает ephemeral X25519 public key, после чего обе стороны получают один X25519 shared secret и выводят session key через HKDF.
+- Добавлен pkg/identity с TOFU-пиннингом: первый ключ сохраняется, а тихая подмена уже известной identity отклоняется.
 - Добавлен pkg/storage: персистентный store маршрутов (destination -> profile) для долгосрочной оптимизации.
 - Добавлен pkg/normalizer: стабильный API-обёртка над core.Normalizer.
 - Расширен state.Sync с EpochID для детерминированного derivation и ProfileAt.
-- cmd/server теперь демонстрирует profile rotation и может быть легко расширён для authenticated handshake.
+- cmd/server поддерживает authenticated session bootstrap и опциональный `--require-auth`, запрещающий data path до успешного handshake.
 
-## Почему это должно быть лучше всех существующих
+## Чем проект отличается
 
-Существующие решения в основном ориентированы на:
-
-1. шифрование и маршрутизацию
-2. стабильный транспортный туннель
-3. маскирование трафика только на уровне грубых паттернов
-
-Chameleon Protocol должен отличаться тем, что он не просто транспорт, а адаптивный протокол, который:
+Chameleon Protocol исследует не только шифрование и передачу данных, а управляемое изменение наблюдаемого поведения потока. Проект объединяет transport prototype, воспроизводимый benchmark и адаптивную память, которая:
 
 - сам анализирует, какой профиль поведения даёт лучший результат
 - сам запоминает успешные и неуспешные сценарии
@@ -135,20 +129,23 @@ chameleon-protocol/
 
 ## Примечание по безопасности
 
-Это исследовательский прототип, а не промышленный secure transport. В текущем виде проект использует:
+Это **исследовательский прототип, а не production VPN**. Текущая реализация использует:
 
-- AEAD-шифрование полезной нагрузки
-- детерминированную ротацию epoch
-- явный session lifecycle и epoch-bound key derivation
-- lightweight adaptive heuristic для выбора маршрута
+- AES-GCM для AEAD-защиты payload;
+- Ed25519-аутентификацию ephemeral X25519 public keys;
+- общий X25519 secret и HKDF-derived session key;
+- TOFU-пиннинг peer identity с запретом тихой подмены сохранённого ключа;
+- опциональный режим `--require-auth`, который отклоняет data packets до handshake;
+- race-тесты, `go vet` и CI build.
 
-Это снижает прямую узнаваемость трафика, но не делает протокол невосприимчивым к статистическому анализу. Более стойкая архитектура потребует:
+Ограничения:
 
-- аутентифицированного handshake
-- жестко заданного state machine для ключей и epoch
-- явного rekey-процесса при смене сессий
-- контроля entropy budget для padding
-- отдельной оценки под атакующими классификаторами трафика
+- первая встреча в модели TOFU остаётся уязвимой для активного MITM, если fingerprint не сверяется по отдельному доверенному каналу;
+- полноценный автоматический rekey state machine ещё не подключён к data path;
+- проект не проходил независимый криптографический аудит;
+- padding/jitter не гарантируют устойчивость против реальных traffic classifiers.
+
+Поэтому проект следует использовать как экспериментальную платформу и учебно-исследовательский transport stack, а не как замену WireGuard/TLS/QUIC в production.
 
 ## Быстрый старт
 
@@ -161,8 +158,8 @@ chameleon-protocol/
 ```bash
 cd /opt/Chameleon-Protocol
 git pull origin main
-go1.26.5 mod tidy
-GOOS=linux GOARCH=amd64 go1.26.5 build -v -o chameleon-server ./cmd/server
+go mod tidy
+GOOS=linux GOARCH=amd64 go build -v -o chameleon-server ./cmd/server
 sudo mv -f chameleon-server /opt/chameleon/chameleon-server
 sudo chmod 0755 /opt/chameleon/chameleon-server
 sudo cp deploy/chameleon.service /etc/systemd/system/chameleon.service
@@ -171,14 +168,26 @@ sudo systemctl enable --now chameleon
 sudo journalctl -u chameleon -f
 ```
 
-или отдельно
-```bash
-go run ./cmd/server --address=127.0.0.1:9000 --psk=research-secret
+или локально в authenticated-only режиме:
 
-Примечание: для production-использования рекомендуется сначала выполнить authenticated handshake и зарегистрировать peer identity в pkg/identity store.
+```bash
+go run ./cmd/server --address=127.0.0.1:9000 --require-auth
 ```
 
 ### Клиент
+
+Authenticated session:
+
+```bash
+go run ./cmd/client \
+  --target=127.0.0.1:9000 \
+  --identity=client1 \
+  --send-handshake \
+  --profile=webrtc \
+  --burst=3
+```
+
+Для исследовательской совместимости остаётся legacy PSK-режим:
 
 ```bash
 go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=research-secret
@@ -216,7 +225,7 @@ go test ./...
 ```bash
 apt update
 apt install -y git golang-go
-go1.26.5 build -v -o chameleon-server ./cmd/server/main.go
+go build -v -o chameleon-server ./cmd/server/main.go
 chmod +x /opt/chameleon-protocol/deploy/deploy-vps.sh
 /opt/chameleon-protocol/deploy/deploy-vps.sh
 systemctl status chameleon-server --no-pager
@@ -237,10 +246,11 @@ ss -lunp | grep 9000
 - Linux VPS deployment bundle with systemd service
 
 **Still next**
-- authenticated peer handshake
-- full epoch key rekey policy integration
-- real desktop/mobile client application
-- operational hardening and long-term resilience testing
+- fingerprint UX и optional configured trust anchors поверх TOFU
+- full epoch key rekey state machine, интегрированный в data path
+- fuzzing и независимый security review
+- реальные desktop/mobile clients
+- long-term resilience tests против независимых classifiers
 
 ## Статус
 
@@ -248,11 +258,11 @@ ss -lunp | grep 9000
 
 Дальнейшая работа должна идти в сторону:
 
-- полноценного authenticated handshake
-- реального key lifecycle и rekey state machine
-- более строгого контроля entropy и anti-classification поведения
-- расширения session context до полноценной security context для всех профилей и эпох
-- деплоя на VPS и запуска как long-running transport service
+- проверяемого trust bootstrap (fingerprints / configured trust anchors);
+- полноценного key lifecycle и rekey state machine;
+- fuzzing, fault injection и независимого security review;
+- benchmark-набора с внешними traffic classifiers и сырыми reproducible results;
+- реальных desktop/mobile clients.
 
 ---
 
@@ -272,9 +282,9 @@ Chameleon Protocol is a research-oriented adaptive transport stack for network-f
 - reproducible benchmarks and metrics reporting
 - a basic session lifecycle and minimal X25519-based handshake
 
-## Why this should be better than existing approaches
+## What makes the project different
 
-Most current solutions focus on transport encryption, routing, or simple traffic camouflage. Chameleon Protocol is different because it aims to become an adaptive, self-learning transport layer that:
+Chameleon Protocol focuses on measurable flow shaping rather than claiming to replace established secure transports. It combines an experimental transport, reproducible benchmarks, and adaptive state that:
 
 - analyzes which behavior profile performs best in real conditions
 - remembers successful and failed pattern outcomes
@@ -288,13 +298,13 @@ This makes the protocol more than “another VPN layer”: it becomes an evidenc
 ### Server
 
 ```bash
-go run ./cmd/server --address=127.0.0.1:9000 --psk=research-secret
+go run ./cmd/server --address=127.0.0.1:9000 --require-auth
 ```
 
 ### Client
 
 ```bash
-go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=research-secret
+go run ./cmd/client --target=127.0.0.1:9000 --identity=client1 --send-handshake --profile=webrtc --burst=3
 ```
 
 ### Benchmark comparison
@@ -309,14 +319,14 @@ go run ./cmd/benchmark --compare --payload=hello-chameleon --burst=1 --rounds=1 
 go test ./...
 ```
 
-### VPS deployment on 88.210.20.127
+### VPS deployment
 
 The release deployment bundle is already prepared in the `deploy/` directory.
 
 1. Connect to the VPS:
 
 ```bash
-ssh root@88.210.20.127
+ssh root@YOUR_VPS_IP
 ```
 
 2. Install dependencies and run the deployment script:
@@ -351,7 +361,8 @@ The project is already a working research transport prototype with a stable modu
 
 ### Next engineering frontier
 
-- authenticated handshake with real endpoint trust
+- explicit fingerprint UX / configured trust anchors
 - fully integrated rekey policy for every epoch boundary
-- real customer-facing clients for mobile and desktop
-- operational hardening, telemetry, and resilience testing
+- fuzzing and independent security review
+- real clients for mobile and desktop
+- reproducible evaluation against independent traffic classifiers
