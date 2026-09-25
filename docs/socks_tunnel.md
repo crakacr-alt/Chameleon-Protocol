@@ -51,8 +51,7 @@ export CHAMELEON_TUNNEL_PSK="$(openssl rand -hex 32)"
 
 ```bash
 go run ./cmd/tunnel-server \
-  --listen=:9443 \
-  --psk="$CHAMELEON_TUNNEL_PSK"
+  --listen=:9443
 ```
 
 Private/loopback egress VPS по умолчанию запрещён.
@@ -62,7 +61,6 @@ Private/loopback egress VPS по умолчанию запрещён.
 ```bash
 go run ./cmd/tunnel-server \
   --listen=:9443 \
-  --psk="$CHAMELEON_TUNNEL_PSK" \
   --allow-private
 ```
 
@@ -81,7 +79,7 @@ PSK сохраняется в:
 /etc/chameleon/tunnel.env
 ```
 
-Файл создаётся с правами `0600`.
+Файл создаётся с правами `0600`. Systemd передаёт PSK через environment, поэтому секрет не попадает в аргументы процесса.
 
 ## Запуск локального proxy
 
@@ -96,8 +94,7 @@ Direct + Chameleon TCP fallback:
 ```bash
 go run ./cmd/proxy \
   --listen=127.0.0.1:1080 \
-  --chameleon-tcp=SERVER_IP:9443 \
-  --psk="$CHAMELEON_TUNNEL_PSK"
+  --chameleon-tcp=SERVER_IP:9443
 ```
 
 Добавить уже существующий локальный SOCKS relay:
@@ -105,7 +102,6 @@ go run ./cmd/proxy \
 ```bash
 go run ./cmd/proxy \
   --chameleon-tcp=SERVER_IP:9443 \
-  --psk="$CHAMELEON_TUNNEL_PSK" \
   --relay-socks=127.0.0.1:1081
 ```
 
