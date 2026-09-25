@@ -3,7 +3,7 @@ package experiment
 import (
 	"testing"
 
-	"github.com/Hack2p/chameleon/pkg/core"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
 )
 
 func TestScenarioRunProducesMetrics(t *testing.T) {
