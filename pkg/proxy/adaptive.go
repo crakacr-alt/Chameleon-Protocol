@@ -23,6 +23,8 @@ type NetworkFunc func() (networkctx.Context, error)
 type TCPDialFunc func(context.Context, string) (net.Conn, error)
 
 // AdaptiveDialer executes plans produced by pkg/planner for SOCKS CONNECT.
+// The configuration is treated as immutable after construction so concurrent
+// SOCKS sessions can safely call DialContext.
 type AdaptiveDialer struct {
 	Planner       *planner.Planner
 	Carriers      []carrier.Candidate
@@ -48,20 +50,26 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 	if len(a.DPIStrategies) == 0 {
 		return nil, fmt.Errorf("no DPI strategies configured")
 	}
-	if a.Timeout <= 0 {
-		a.Timeout = 8 * time.Second
+
+	timeout := a.Timeout
+	if timeout <= 0 {
+		timeout = 8 * time.Second
 	}
-	if a.Network == nil {
-		a.Network = networkctx.Detect
+
+	networkFunc := a.Network
+	if networkFunc == nil {
+		networkFunc = networkctx.Detect
 	}
-	if a.DirectDial == nil {
-		dialer := &net.Dialer{Timeout: a.Timeout}
-		a.DirectDial = func(ctx context.Context, address string) (net.Conn, error) {
+
+	directDial := a.DirectDial
+	if directDial == nil {
+		dialer := &net.Dialer{Timeout: timeout}
+		directDial = func(ctx context.Context, address string) (net.Conn, error) {
 			return dialer.DialContext(ctx, "tcp", address)
 		}
 	}
 
-	network, err := a.Network()
+	network, err := networkFunc()
 	if err != nil {
 		network = networkctx.Context{ID: "unknown", Link: networkctx.LinkUnknown}
 	}
@@ -94,7 +102,7 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 		seen[key] = true
 
 		started := time.Now()
-		conn, err := a.dialPlan(ctx, destination, plan)
+		conn, err := a.dialPlan(ctx, destination, plan, timeout, directDial)
 		connectLatency := time.Since(started)
 		if err != nil {
 			lastErr = err
@@ -131,11 +139,17 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 	return nil, lastErr
 }
 
-func (a *AdaptiveDialer) dialPlan(ctx context.Context, destination string, plan planner.Plan) (net.Conn, error) {
+func (a *AdaptiveDialer) dialPlan(
+	ctx context.Context,
+	destination string,
+	plan planner.Plan,
+	timeout time.Duration,
+	directDial TCPDialFunc,
+) (net.Conn, error) {
 	strategy := plan.DPI.Strategy
 	switch plan.Carrier.Carrier.Kind {
 	case carrier.KindDirect:
-		conn, err := a.DirectDial(ctx, destination)
+		conn, err := directDial(ctx, destination)
 		if err != nil {
 			return nil, err
 		}
@@ -146,9 +160,9 @@ func (a *AdaptiveDialer) dialPlan(ctx context.Context, destination string, plan 
 		if endpoint == "" {
 			return nil, fmt.Errorf("chameleon TCP carrier has no endpoint")
 		}
-		return tunnel.DialContextWithDialer(ctx, endpoint, destination, a.PSK, a.Timeout,
+		return tunnel.DialContextWithDialer(ctx, endpoint, destination, a.PSK, timeout,
 			func(ctx context.Context, address string) (net.Conn, error) {
-				conn, err := a.DirectDial(ctx, address)
+				conn, err := directDial(ctx, address)
 				if err != nil {
 					return nil, err
 				}
@@ -160,9 +174,9 @@ func (a *AdaptiveDialer) dialPlan(ctx context.Context, destination string, plan 
 		if endpoint == "" {
 			return nil, fmt.Errorf("relay carrier has no endpoint")
 		}
-		return socks5.DialContextWithDialer(ctx, endpoint, destination, a.Timeout,
+		return socks5.DialContextWithDialer(ctx, endpoint, destination, timeout,
 			func(ctx context.Context, address string) (net.Conn, error) {
-				conn, err := a.DirectDial(ctx, address)
+				conn, err := directDial(ctx, address)
 				if err != nil {
 					return nil, err
 				}
