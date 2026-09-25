@@ -37,6 +37,37 @@ func (t *Transport) cipherSnapshot() *chameleoncrypto.Cipher {
 	return t.cipher
 }
 
+// updateEpochID stores a copy because the slice belongs to another component.
+func (t *Transport) updateEpochID(epochID []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.session == nil || t.session.Sec == nil {
+		return
+	}
+	t.session.Sec.EpochID = append([]byte(nil), epochID...)
+}
+
+// consumeEntropy subtracts padding from the session budget.
+// EntropyLimited is separate from EntropyBudget so zero can mean "used up".
+func (t *Transport) consumeEntropy(paddingBytes int64) error {
+	if paddingBytes <= 0 {
+		return nil
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.session == nil || t.session.Sec == nil || !t.session.Sec.EntropyLimited {
+		return nil
+	}
+	if paddingBytes > t.session.Sec.EntropyBudget {
+		return fmt.Errorf("entropy budget exceeded for session")
+	}
+
+	t.session.Sec.EntropyBudget -= paddingBytes
+	return nil
+}
+
 // Normalizer is the main packet shaping engine.
 type Normalizer struct {
 	padding morph.PaddingConfig
@@ -135,9 +166,9 @@ func NewTransport(conn net.Conn, cfg Config) (*Transport, error) {
 	}
 
 	session := state.NewSessionWithSecurity()
-	if session.Sec != nil {
-		// EntropyBudget is cumulative for the session. Zero means unlimited.
+	if session.Sec != nil && normalizer.padding.EntropyBudget > 0 {
 		session.Sec.EntropyBudget = normalizer.padding.EntropyBudget
+		session.Sec.EntropyLimited = true
 	}
 
 	return &Transport{
@@ -182,13 +213,12 @@ func (t *Transport) Send(payload []byte) error {
 		if err := t.session.Advance(time.Now(), string(profile), period); err != nil {
 			return fmt.Errorf("advance session: %w", err)
 		}
-		// ensure session has SecurityContext keys derived for current epoch
-		if t.session.Sec != nil && t.syncer != nil {
-			epochID, _ := t.syncer.EpochID(time.Now())
-			// The epoch identifier is metadata for the security context. The
-			// session entropy budget is initialized once in NewTransport and is
-			// deliberately not reset on every packet.
-			t.session.Sec.EpochID = epochID
+		if t.syncer != nil {
+			epochID, err := t.syncer.EpochID(time.Now())
+			if err != nil {
+				return fmt.Errorf("compute epoch id: %w", err)
+			}
+			t.updateEpochID(epochID)
 		}
 	}
 
@@ -196,14 +226,9 @@ func (t *Transport) Send(payload []byte) error {
 		time.Sleep(delay)
 	}
 
-	// deduct entropy budget if present
-	if t.session != nil && t.session.Sec != nil {
-		if t.session.Sec.EntropyBudget > 0 {
-			if int64(len(normalized)-len(data)) > t.session.Sec.EntropyBudget {
-				return fmt.Errorf("entropy budget exceeded for session")
-			}
-			t.session.Sec.EntropyBudget -= int64(len(normalized) - len(data))
-		}
+	paddingBytes := int64(len(normalized) - len(data))
+	if err := t.consumeEntropy(paddingBytes); err != nil {
+		return err
 	}
 
 	framed, err := EncodeFrame(profile, normalized, len(data))

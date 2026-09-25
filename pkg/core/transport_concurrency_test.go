@@ -1,10 +1,13 @@
 package core
 
 import (
+	"io"
 	"net"
+	"sync"
 	"testing"
 
 	chameleoncrypto "github.com/crakacr-alt/Chameleon-Protocol/pkg/crypto"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/morph"
 )
 
 func TestTransportConcurrentCipherUpdateAndSend(t *testing.T) {
@@ -61,4 +64,50 @@ func TestTransportConcurrentCipherUpdateAndSend(t *testing.T) {
 		t.Fatalf("Send returned error: %v", err)
 	}
 	<-readerDone
+}
+
+func TestTransportConcurrentSendsProtectSecurityState(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+
+	transport, err := NewTransport(clientConn, Config{
+		Profile:      ProfileWebRTC,
+		SharedSecret: "concurrency-test",
+		Padding: morph.PaddingConfig{
+			MinPad:        1,
+			MaxPad:        1,
+			EntropyBudget: 1000,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		_, _ = io.Copy(io.Discard, serverConn)
+	}()
+
+	const workers = 40
+	errs := make(chan error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- transport.Send([]byte("parallel-send"))
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	_ = clientConn.Close()
+	<-readerDone
+	_ = serverConn.Close()
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Send returned error: %v", err)
+		}
+	}
 }
