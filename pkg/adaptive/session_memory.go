@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 // SessionMemory stores the longest-running evidence for a transport session.
 type SessionMemory struct {
-	StorePath string                   `json:"store_path"`
+	mu        sync.Mutex
+	StorePath string                   `json:"-"`
 	Profiles  map[string]ProfileMemory `json:"profiles"`
 }
 
@@ -52,6 +54,9 @@ func (m *SessionMemory) Observe(obs Observation) error {
 	if m == nil || obs.Profile == "" {
 		return nil
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	profile := strings.ToLower(obs.Profile)
 	entry := m.Profiles[profile]
 	entry.SessionID = obs.SessionID
@@ -64,12 +69,17 @@ func (m *SessionMemory) Observe(obs Observation) error {
 	entry.AvgLatency = averageDuration(entry.AvgLatency, obs.Latency, entry.SuccessCount+entry.FailureCount)
 	entry.AvgThroughput = averageFloat64(entry.AvgThroughput, obs.Throughput, entry.SuccessCount+entry.FailureCount)
 	m.Profiles[profile] = entry
-	return m.Save()
+	return m.saveLocked()
 }
 
 // BestProfile returns the most successful profile from the saved session memory.
 func (m *SessionMemory) BestProfile() string {
-	if m == nil || len(m.Profiles) == 0 {
+	if m == nil {
+		return "webrtc"
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.Profiles) == 0 {
 		return "webrtc"
 	}
 	profiles := make([]string, 0, len(m.Profiles))
@@ -93,7 +103,16 @@ func (m *SessionMemory) BestProfile() string {
 
 // Save persists the session memory to disk.
 func (m *SessionMemory) Save() error {
-	if m == nil || m.StorePath == "" {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.saveLocked()
+}
+
+func (m *SessionMemory) saveLocked() error {
+	if m.StorePath == "" {
 		return nil
 	}
 	payload, err := json.MarshalIndent(m, "", "  ")
