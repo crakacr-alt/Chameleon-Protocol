@@ -1,5 +1,12 @@
 # Chameleon Protocol
 
+[![Go CI](https://github.com/crakacr-alt/Chameleon-Protocol/actions/workflows/go-test.yml/badge.svg)](https://github.com/crakacr-alt/Chameleon-Protocol/actions/workflows/go-test.yml)
+[![CodeQL](https://github.com/crakacr-alt/Chameleon-Protocol/actions/workflows/codeql.yml/badge.svg)](https://github.com/crakacr-alt/Chameleon-Protocol/actions/workflows/codeql.yml)
+
+> **Версия:** 0.2.2  
+> **Статус:** исследовательский прототип, не production VPN.
+
+
 Chameleon Protocol — исследовательский адаптивный transport-стек для нормализации сетевых потоков. Цель проекта: обеспечить управляемую непредсказуемость трафика для тестирования устойчивости сетевых фильтров и классификаторов. Текущая версия включает экспериментальный authenticated handshake (Ed25519 + X25519), TOFU-пиннинг identity, peer-shared session key через HKDF, persistent identity/route stores, state-sync для ротации профилей по epoch и стабильный pkg/normalizer API.
 
 ## Что уже сделано
@@ -151,7 +158,7 @@ chameleon-protocol/
 
 ### Требования
 
-- Go 1.22+
+- Go 1.25+
 - Linux, macOS или Windows с обычной Go toolchain
 
 ### Сервер
@@ -217,7 +224,10 @@ gaming: throughput=2691.16 loss=0.0000 mean_latency=5.5738ms
 ### Полная проверка
 
 ```bash
-go test ./...
+gofmt -w .
+go vet ./...
+go test -race ./...
+go build ./...
 ```
 
 2. Установить зависимости и запустить deployment:
@@ -251,6 +261,13 @@ ss -lunp | grep 9000
 - fuzzing и независимый security review
 - реальные desktop/mobile clients
 - long-term resilience tests против независимых classifiers
+
+## Поддержка проекта
+
+- [История изменений](CHANGELOG.md)
+- [Безопасность](SECURITY.md)
+- [Как внести вклад](CONTRIBUTING.md)
+- [Как выпускать версии](docs/RELEASE_PROCESS.md)
 
 ## Статус
 
