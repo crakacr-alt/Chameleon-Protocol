@@ -23,6 +23,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:1080", "local SOCKS5 listen address")
 	chameleonTCP := flag.String("chameleon-tcp", "", "optional Chameleon TCP tunnel endpoint")
 	relaySOCKS := flag.String("relay-socks", "", "optional existing SOCKS5 relay endpoint")
+	allowRemote := flag.Bool("allow-remote-socks", false, "allow SOCKS listener on non-loopback addresses")
 	psk := flag.String("psk", "", "PSK for --chameleon-tcp")
 	stateDir := flag.String("state-dir", defaultStateDir(), "adaptive state directory")
 	timeout := flag.Duration("timeout", 8*time.Second, "outbound connection timeout")
@@ -30,6 +31,10 @@ func main() {
 
 	if *chameleonTCP != "" && *psk == "" {
 		fmt.Fprintln(os.Stderr, "error: --psk is required when --chameleon-tcp is set")
+		os.Exit(2)
+	}
+	if !*allowRemote && !isLoopbackListen(*listen) {
+		fmt.Fprintln(os.Stderr, "error: non-loopback SOCKS listen requires --allow-remote-socks")
 		os.Exit(2)
 	}
 
@@ -108,4 +113,14 @@ func defaultStateDir() string {
 		return ""
 	}
 	return filepath.Join(configDir, "chameleon")
+}
+
+
+func isLoopbackListen(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
