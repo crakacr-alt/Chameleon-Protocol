@@ -84,3 +84,31 @@ func TestCarrierMemoryPersists(t *testing.T) {
 		t.Fatalf("unexpected persisted stats: %+v", got)
 	}
 }
+
+
+func TestTLSCarrierPreferredOverRawTCPAfterDirectFailure(t *testing.T) {
+	e, err := NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := Context{NetworkID: "mobile", Destination: "example.com:443", TrafficClass: "web", Protocol: "tcp"}
+	if err := e.Observe(Observation{
+		Context:  ctx,
+		Carrier:  "direct",
+		Success:  false,
+		Latency:  time.Second,
+		Failure:  "blocked",
+		At:       time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := WithTLS(Defaults("", "server:9443", ""), "server:443")
+	decision, err := e.Choose(ctx, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Carrier.Name != "chameleon-tls" {
+		t.Fatalf("want TLS fallback before raw TCP, got %q", decision.Carrier.Name)
+	}
+}
