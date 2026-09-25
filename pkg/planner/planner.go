@@ -47,16 +47,16 @@ const (
 
 // Result feeds real measurements back into the relevant learners.
 type Result struct {
-	Plan        Plan
-	Destination string
-	Protocol    string
+	Plan                   Plan
+	Destination            string
+	Protocol               string
 	Success                bool
 	Scope                  FailureScope
 	CarrierAlreadyObserved bool
 	Latency                time.Duration
-	Throughput  float64
-	Failure     string
-	At          time.Time
+	Throughput             float64
+	Failure                string
+	At                     time.Time
 }
 
 // Planner joins route selection and DPI strategy selection.
