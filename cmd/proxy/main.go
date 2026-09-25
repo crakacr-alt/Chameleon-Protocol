@@ -18,11 +18,16 @@ import (
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/planner"
 	adaptiveproxy "github.com/crakacr-alt/Chameleon-Protocol/pkg/proxy"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/socks5"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
 )
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:1080", "local SOCKS5 listen address")
-	chameleonTCP := flag.String("chameleon-tcp", "", "optional Chameleon TCP tunnel endpoint")
+	chameleonTCP := flag.String("chameleon-tcp", "", "optional raw Chameleon TCP tunnel endpoint")
+	chameleonTLS := flag.String("chameleon-tls", "", "optional TLS-fronted Chameleon tunnel endpoint")
+	tlsServerName := flag.String("tls-server-name", "", "TLS server name/SNI for --chameleon-tls")
+	tlsInsecure := flag.Bool("tls-insecure", false, "skip normal TLS certificate verification (not recommended)")
+	tlsFingerprint := flag.String("tls-fingerprint", "", "optional pinned TLS certificate SHA-256 fingerprint")
 	relaySOCKS := flag.String("relay-socks", "", "optional existing SOCKS5 relay endpoint")
 	allowRemote := flag.Bool("allow-remote-socks", false, "allow SOCKS listener on non-loopback addresses")
 	psk := flag.String("psk", "", "PSK for --chameleon-tcp")
@@ -36,8 +41,8 @@ func main() {
 	if tunnelPSK == "" {
 		tunnelPSK = os.Getenv("CHAMELEON_TUNNEL_PSK")
 	}
-	if *chameleonTCP != "" && tunnelPSK == "" {
-		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required when --chameleon-tcp is set")
+	if (*chameleonTCP != "" || *chameleonTLS != "") && tunnelPSK == "" {
+		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required for Chameleon tunnel carriers")
 		os.Exit(2)
 	}
 	if !*allowRemote && !isLoopbackListen(*listen) {
@@ -65,11 +70,21 @@ func main() {
 		panic(err)
 	}
 
+	carriers := carrier.WithTLS(
+		carrier.Defaults("", *chameleonTCP, *relaySOCKS),
+		*chameleonTLS,
+	)
+
 	dialer := &adaptiveproxy.AdaptiveDialer{
 		Planner:                  p,
-		Carriers:                 carrier.Defaults("", *chameleonTCP, *relaySOCKS),
+		Carriers:                 carriers,
 		DPIStrategies:            dpi.DefaultStrategies(),
 		PSK:                      tunnelPSK,
+		TLSConfig: tunnel.TLSClientConfig{
+			ServerName:         *tlsServerName,
+			InsecureSkipVerify: *tlsInsecure,
+			PinnedSHA256:       *tlsFingerprint,
+		},
 		Timeout:                  *timeout,
 		DirectCooldown:           *directCooldown,
 		ApplicationFailureWindow: *failureWindow,
@@ -103,8 +118,11 @@ func main() {
 	}()
 
 	fmt.Printf("Chameleon SOCKS5 proxy listening on %s\n", listener.Addr())
+	if *chameleonTLS != "" {
+		fmt.Printf("Chameleon TLS fallback: %s\n", *chameleonTLS)
+	}
 	if *chameleonTCP != "" {
-		fmt.Printf("Chameleon TCP fallback: %s\n", *chameleonTCP)
+		fmt.Printf("Chameleon raw TCP fallback: %s\n", *chameleonTCP)
 	}
 	if *relaySOCKS != "" {
 		fmt.Printf("external SOCKS relay fallback: %s\n", *relaySOCKS)
