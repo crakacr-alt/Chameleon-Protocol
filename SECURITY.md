@@ -1,15 +1,37 @@
 # Security Policy
 
-## Supported versions
+## Supported version
 
-The project currently provides security response best-effort for the latest `main` branch.
+Security fixes делаются для последней версии в `main`.
 
-## Reporting a vulnerability
+## Что считать важной security-ошибкой
 
-Please report vulnerabilities privately through the repository's security contact channel or via a direct maintainer message. Do not disclose a potential issue publicly until it has been evaluated and a mitigation plan is available.
+Например:
 
-## Response expectations
+- обход authenticated handshake;
+- тихая замена pinned identity;
+- повторное использование или неправильная derivation ключей;
+- panic/crash на недоверенном frame;
+- data race в security/session state;
+- запись private key с небезопасными правами;
+- подмена runtime path через сохранённый JSON.
 
-- acknowledgement will be attempted as soon as possible
-- impact severity will be assessed
-- a fix or advisory will be prepared when appropriate
+## Как сообщить
+
+Если в репозитории доступен **Security -> Report a vulnerability**, используйте
+его. Не публикуйте рабочие секреты, private keys и подробный exploit в обычном
+issue.
+
+Для воспроизведения достаточно:
+
+1. commit SHA;
+2. минимального входа;
+3. ожидаемого результата;
+4. фактического результата;
+5. версии Go и ОС.
+
+## Ограничения проекта
+
+Chameleon Protocol — исследовательский прототип. Он не проходил независимый
+криптографический аудит и не должен рассматриваться как замена WireGuard, TLS
+или QUIC в production.
