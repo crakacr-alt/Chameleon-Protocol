@@ -48,3 +48,20 @@ func Defaults(chameleonUDP, chameleonTCP, relay string) []Candidate {
 
 	return out
 }
+
+
+// WithTLS appends an optional TLS-fronted Chameleon carrier.
+// It is separate from Defaults to preserve existing callers and configs.
+func WithTLS(candidates []Candidate, endpoint string) []Candidate {
+	if endpoint == "" {
+		return candidates
+	}
+	return append(candidates, Candidate{
+		Name:        "chameleon-tls",
+		Kind:        KindChameleonTLS,
+		Endpoint:    endpoint,
+		Cost:        0.45,
+		SupportsTCP: true,
+		SupportsUDP: false,
+	})
+}
