@@ -28,6 +28,8 @@ func main() {
 	psk := flag.String("psk", "", "PSK for --chameleon-tcp")
 	stateDir := flag.String("state-dir", defaultStateDir(), "adaptive state directory")
 	timeout := flag.Duration("timeout", 8*time.Second, "outbound connection timeout")
+	directCooldown := flag.Duration("direct-cooldown", 10*time.Minute, "temporarily skip direct after all DPI strategies fail")
+	failureWindow := flag.Duration("failure-window", 12*time.Second, "first-response window used for automatic DPI failure learning")
 	flag.Parse()
 
 	tunnelPSK := *psk
@@ -67,9 +69,11 @@ func main() {
 		Planner:       p,
 		Carriers:      carrier.Defaults("", *chameleonTCP, *relaySOCKS),
 		DPIStrategies: dpi.DefaultStrategies(),
-		PSK:           tunnelPSK,
-		Timeout:       *timeout,
-		Network:       networkctx.Detect,
+		PSK:                      tunnelPSK,
+		Timeout:                  *timeout,
+		DirectCooldown:           *directCooldown,
+		ApplicationFailureWindow: *failureWindow,
+		Network:                  networkctx.Detect,
 	}
 
 	server := &socks5.Server{
