@@ -157,7 +157,6 @@ func TestEnginePersistsMemory(t *testing.T) {
 	}
 }
 
-
 func TestRecentlyExhausted(t *testing.T) {
 	engine, err := NewEngine("")
 	if err != nil {
