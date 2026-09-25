@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Hack2p/chameleon/pkg/adaptive"
-	chameleoncrypto "github.com/Hack2p/chameleon/pkg/crypto"
-	"github.com/Hack2p/chameleon/pkg/morph"
-	"github.com/Hack2p/chameleon/pkg/state"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/adaptive"
+	chameleoncrypto "github.com/crakacr-alt/Chameleon-Protocol/pkg/crypto"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/morph"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/state"
 )
 
 // Config holds packet shaping parameters for the Chameleon wrapper.
