@@ -30,8 +30,12 @@ func main() {
 	timeout := flag.Duration("timeout", 8*time.Second, "outbound connection timeout")
 	flag.Parse()
 
-	if *chameleonTCP != "" && *psk == "" {
-		fmt.Fprintln(os.Stderr, "error: --psk is required when --chameleon-tcp is set")
+	tunnelPSK := *psk
+	if tunnelPSK == "" {
+		tunnelPSK = os.Getenv("CHAMELEON_TUNNEL_PSK")
+	}
+	if *chameleonTCP != "" && tunnelPSK == "" {
+		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required when --chameleon-tcp is set")
 		os.Exit(2)
 	}
 	if !*allowRemote && !isLoopbackListen(*listen) {
@@ -63,7 +67,7 @@ func main() {
 		Planner:       p,
 		Carriers:      carrier.Defaults("", *chameleonTCP, *relaySOCKS),
 		DPIStrategies: dpi.DefaultStrategies(),
-		PSK:           *psk,
+		PSK:           tunnelPSK,
 		Timeout:       *timeout,
 		Network:       networkctx.Detect,
 	}
