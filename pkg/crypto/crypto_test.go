@@ -51,3 +51,14 @@ func TestKeyExchangeProducesSharedSecret(t *testing.T) {
 		t.Fatalf("shared secrets differ: %q vs %q", string(aliceSecret), string(bobSecret))
 	}
 }
+
+func TestCipherRejectsEmptySecrets(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewCipher(""); err == nil {
+		t.Fatal("expected empty passphrase to be rejected")
+	}
+	if _, err := NewCipherFromKey(nil); err == nil {
+		t.Fatal("expected empty key to be rejected")
+	}
+}
