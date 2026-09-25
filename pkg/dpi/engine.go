@@ -217,6 +217,42 @@ func (e *Engine) Snapshot(ctx Context) map[string]StrategyStats {
 	return out
 }
 
+// RecentlyExhausted reports whether every supplied strategy has recently
+// failed in this exact network/destination context and none has recovered
+// after its last failure. It is used as a short-lived circuit breaker for
+// direct traffic so the caller can try another carrier instead of cycling
+// the same DPI strategies forever.
+func (e *Engine) RecentlyExhausted(ctx Context, candidates []Strategy, now time.Time, window time.Duration) bool {
+	if e == nil || len(candidates) == 0 {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if window <= 0 {
+		window = 10 * time.Minute
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	statsByStrategy := e.Entries[contextKey(ctx)]
+	for _, candidate := range candidates {
+		stats := statsByStrategy[candidate.Name]
+		if stats == nil || stats.Attempts == 0 || stats.LastFailure.IsZero() {
+			return false
+		}
+		if stats.LastSuccess.After(stats.LastFailure) {
+			return false
+		}
+		age := now.Sub(stats.LastFailure)
+		if age < 0 || age > window {
+			return false
+		}
+	}
+	return true
+}
+
 // Save writes the current memory to disk.
 func (e *Engine) Save() error {
 	if e == nil {
