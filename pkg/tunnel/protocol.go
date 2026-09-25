@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	helloVersion       byte = 1
-	nonceSize               = 32
-	maxDestinationLen       = 1024
-	maxHelloCipher          = 2048
+	helloVersion      byte = 1
+	nonceSize              = 32
+	maxDestinationLen      = 1024
+	maxHelloCipher         = 2048
 )
 
 type clientHello struct {
