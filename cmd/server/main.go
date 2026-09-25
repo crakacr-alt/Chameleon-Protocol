@@ -8,9 +8,9 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Hack2p/chameleon/pkg/core"
-	chameleoncrypto "github.com/Hack2p/chameleon/pkg/crypto"
-	idstore "github.com/Hack2p/chameleon/pkg/identity"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
+	chameleoncrypto "github.com/crakacr-alt/Chameleon-Protocol/pkg/crypto"
+	idstore "github.com/crakacr-alt/Chameleon-Protocol/pkg/identity"
 )
 
 func normalizeListenAddress(address string) string {
