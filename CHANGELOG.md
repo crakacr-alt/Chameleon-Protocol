@@ -23,7 +23,7 @@
 
 ### Security
 
-- PSK для TCP tunnel обязателен и не имеет встроенного default secret;
+- PSK для TCP tunnel обязателен, не имеет встроенного default secret и может передаваться через `CHAMELEON_TUNNEL_PSK` без появления в process arguments;
 - tunnel metadata аутентифицируется и шифруется AEAD;
 - случайный KDF salt используется один раз на tunnel connection;
 - replayed hello salt отклоняется в пределах clock-skew window;
