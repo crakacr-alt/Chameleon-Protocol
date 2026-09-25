@@ -151,11 +151,10 @@ func serverGreeting(conn net.Conn) error {
 		}
 	}
 	if !foundNoAuth {
-		_, _ = conn.Write([]byte{0x05, 0xff})
+		_ = writeAll(conn, []byte{0x05, 0xff})
 		return fmt.Errorf("client did not offer no-auth method")
 	}
-	_, err := conn.Write([]byte{0x05, 0x00})
-	return err
+	return writeAll(conn, []byte{0x05, 0x00})
 }
 
 func readRequest(conn net.Conn) (string, error) {
@@ -231,11 +230,23 @@ func writeReply(conn net.Conn, code byte, addr net.Addr) error {
 	reply[3] = 0x01
 	copy(reply[4:8], ip4)
 	binary.BigEndian.PutUint16(reply[8:10], uint16(port))
-	_, err := conn.Write(reply)
-	return err
+	return writeAll(conn, reply)
+}
+
+func writeAll(w io.Writer, p []byte) error {
+	for len(p) > 0 {
+		n, err := w.Write(p)
+		if err != nil {
+			return err
+		}
+		if n <= 0 || n > len(p) {
+			return io.ErrShortWrite
+		}
+		p = p[n:]
+	}
+	return nil
 }
 
 func isClosed(err error) bool {
 	return err == nil || errors.Is(err, net.ErrClosed)
 }
-
