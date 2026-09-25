@@ -24,12 +24,12 @@ const (
 
 // Context describes the network without saving raw local addresses.
 type Context struct {
-	ID       string   `json:"id"`
-	Link     LinkType `json:"link"`
-	IPv4     bool     `json:"ipv4"`
-	IPv6     bool     `json:"ipv6"`
-	OS       string   `json:"os"`
-	Interface string  `json:"interface,omitempty"`
+	ID        string   `json:"id"`
+	Link      LinkType `json:"link"`
+	IPv4      bool     `json:"ipv4"`
+	IPv6      bool     `json:"ipv6"`
+	OS        string   `json:"os"`
+	Interface string   `json:"interface,omitempty"`
 }
 
 // Detect returns a best-effort context for the current machine.
