@@ -84,7 +84,6 @@ func TestAdaptiveDialerLearnsCarrierThenDPI(t *testing.T) {
 	}
 }
 
-
 func TestAdaptiveDialerLearnsEarlyDirectDPIFailure(t *testing.T) {
 	carrierEngine, err := carrier.NewEngine("")
 	if err != nil {
@@ -222,7 +221,6 @@ func TestAdaptiveDialerSkipsDirectWhenAllDPIStrategiesRecentlyFailed(t *testing.
 		t.Fatalf("expected direct cooldown to start with relay endpoint, got %q", firstDial)
 	}
 }
-
 
 func TestAdaptiveDialerLearnsDirectBlackholeFromFirstResponseTimeout(t *testing.T) {
 	carrierEngine, err := carrier.NewEngine("")
