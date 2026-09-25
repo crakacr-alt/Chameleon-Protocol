@@ -9,9 +9,9 @@ import (
 // AuthHandshake combines an ephemeral X25519 key exchange with an
 // Ed25519 identity keypair to provide a simple authenticated handshake.
 type AuthHandshake struct {
-	ke       *KeyExchange
-	edPub    ed25519.PublicKey
-	edPriv   ed25519.PrivateKey
+	ke     *KeyExchange
+	edPub  ed25519.PublicKey
+	edPriv ed25519.PrivateKey
 }
 
 // NewAuthHandshake generates a fresh X25519 ephemeral key pair and
@@ -36,11 +36,12 @@ func NewAuthHandshakeWithKeyManager(km *KeyManager) (*AuthHandshake, error) {
 	if km == nil {
 		return nil, fmt.Errorf("key manager required")
 	}
+
 	ke, err := NewKeyExchange()
 	if err != nil {
 		return nil, fmt.Errorf("new key exchange: %w", err)
 	}
-	// KeyManager holds private key internally; we can access it since same package
+
 	return &AuthHandshake{ke: ke, edPub: km.pub, edPriv: km.priv}, nil
 }
 
@@ -65,8 +66,8 @@ func (a *AuthHandshake) SignX25519() ([]byte, error) {
 	if a == nil || a.ke == nil || len(a.edPriv) == 0 {
 		return nil, fmt.Errorf("handshake not initialized")
 	}
-	msg := a.ke.PublicKey()
-	sig := ed25519.Sign(a.edPriv, msg)
+
+	sig := ed25519.Sign(a.edPriv, a.ke.PublicKey())
 	return append([]byte(nil), sig...), nil
 }
 
@@ -75,11 +76,11 @@ func VerifySignedPublic(peerXpub, peerEdPub, sig []byte) error {
 	if len(peerXpub) == 0 {
 		return fmt.Errorf("peer x25519 public empty")
 	}
-	if len(peerEdPub) == 0 {
-		return fmt.Errorf("peer ed25519 public empty")
+	if len(peerEdPub) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid peer ed25519 public key size")
 	}
-	if len(sig) == 0 {
-		return fmt.Errorf("signature empty")
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature size")
 	}
 	if !ed25519.Verify(ed25519.PublicKey(peerEdPub), peerXpub, sig) {
 		return fmt.Errorf("signature verification failed")
