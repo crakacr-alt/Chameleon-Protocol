@@ -13,11 +13,11 @@ import (
 
 // Request is everything the planner needs before opening a connection.
 type Request struct {
-	Network      networkctx.Context
-	Destination  string
-	Protocol     string
-	Purpose      string
-	Carriers     []carrier.Candidate
+	Network       networkctx.Context
+	Destination   string
+	Protocol      string
+	Purpose       string
+	Carriers      []carrier.Candidate
 	DPIStrategies []dpi.Strategy
 }
 
@@ -27,12 +27,12 @@ type Request struct {
 // the local network only sees the connection to that carrier endpoint, so DPI
 // strategy learning must be attached to the endpoint instead.
 type Plan struct {
-	NetworkID     string
-	TrafficClass  traffic.Class
-	Carrier       carrier.Decision
-	DPI           dpi.Decision
-	DPITarget     string
-	Reason        string
+	NetworkID    string
+	TrafficClass traffic.Class
+	Carrier      carrier.Decision
+	DPI          dpi.Decision
+	DPITarget    string
+	Reason       string
 }
 
 // FailureScope tells the learner which layer actually failed.
