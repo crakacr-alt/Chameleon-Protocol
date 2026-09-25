@@ -65,9 +65,9 @@ func TestControllerKeepsPlanSmall(t *testing.T) {
 
 	plan := c.Plan(Request{
 		NetworkID: "n", Destination: "d",
-		Traffic: adaptive.TrafficInteractive,
+		Traffic:  adaptive.TrafficInteractive,
 		Protocol: dpi.ProtocolTLS,
-		Failure: dpi.FailureTLSHandshake,
+		Failure:  dpi.FailureTLSHandshake,
 		Carriers: []adaptive.PathCandidate{
 			{Carrier: "quic", Endpoint: "e1"},
 			{Carrier: "tcp-tls", Endpoint: "e2"},
