@@ -2,7 +2,7 @@ package tunnel
 
 import (
 	"context"
-	"crypto/subtle"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -158,10 +158,5 @@ func (s *Server) acceptNonce(nonce [nonceSize]byte, now time.Time) bool {
 }
 
 func isClosedError(err error) bool {
-	if err == nil {
-		return true
-	}
-	// Avoid depending on platform-specific error strings for correctness.
-	// Once both sides are closed, errors from the losing io.Copy are expected.
-	return subtle.ConstantTimeCompare([]byte(err.Error()), []byte("")) == 1
+	return err == nil || errors.Is(err, net.ErrClosed)
 }
