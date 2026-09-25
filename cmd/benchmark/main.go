@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/Hack2p/chameleon/pkg/core"
-	"github.com/Hack2p/chameleon/pkg/experiment"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/experiment"
 )
 
 func main() {
