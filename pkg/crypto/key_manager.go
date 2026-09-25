@@ -2,10 +2,10 @@ package crypto
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
