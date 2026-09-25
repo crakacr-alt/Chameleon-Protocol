@@ -2,7 +2,6 @@ package experiment
 
 import (
 	"math/rand"
-	"time"
 )
 
 // SimpleClassifierSim is a toy statistical classifier that scores entropy
