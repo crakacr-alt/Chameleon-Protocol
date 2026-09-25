@@ -162,9 +162,10 @@ func (p *Planner) Observe(result Result) error {
 		TrafficClass: string(result.Plan.TrafficClass),
 	}
 
-	// A successful request proves both layers worked.
-	// On failure we update only the layer that actually failed when known.
-	if result.Success || scope == ScopeCarrier || scope == ScopeBoth {
+	// Scope is respected for both success and failure. A successful TCP dial,
+	// for example, proves the carrier but does not yet prove that TLS/HTTP
+	// survived the path's DPI.
+	if scope == ScopeCarrier || scope == ScopeBoth {
 		if err := p.Carriers.Observe(carrier.Observation{
 			Context:    carrierCtx,
 			Carrier:    result.Plan.Carrier.Carrier.Name,
@@ -178,7 +179,7 @@ func (p *Planner) Observe(result Result) error {
 		}
 	}
 
-	if result.Success || scope == ScopeDPI || scope == ScopeBoth {
+	if scope == ScopeDPI || scope == ScopeBoth {
 		if err := p.DPI.Observe(dpi.Observation{
 			Context:    dpiCtx,
 			Strategy:   result.Plan.DPI.Strategy.Name,
