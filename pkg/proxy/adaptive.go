@@ -14,6 +14,7 @@ import (
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/networkctx"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/planner"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/socks5"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/traffic"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
 )
 
@@ -33,13 +34,22 @@ type AdaptiveDialer struct {
 	Purpose       string
 	Timeout       time.Duration
 
+	// DirectCooldown is how long direct is temporarily skipped after every
+	// available userspace DPI strategy recently failed for the same destination.
+	DirectCooldown time.Duration
+
+	// ApplicationFailureWindow limits automatic DPI-failure classification
+	// to early failures after a TCP connection was already established.
+	ApplicationFailureWindow time.Duration
+
 	Network    NetworkFunc
 	DirectDial TCPDialFunc
 }
 
 // DialContext chooses a plan, tries it, records hard route failures and
-// automatically replans. A successful TCP dial is recorded as carrier success;
-// DPI success is recorded only after real response bytes arrive.
+// automatically replans. A successful TCP dial is recorded as carrier success.
+// For direct traffic, DPI success/failure is learned from real application
+// bytes. For tunnel/relay carriers, their own handshake proves the first hop.
 func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (net.Conn, error) {
 	if a == nil || a.Planner == nil {
 		return nil, fmt.Errorf("adaptive dialer is not initialized")
@@ -54,6 +64,14 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 	timeout := a.Timeout
 	if timeout <= 0 {
 		timeout = 8 * time.Second
+	}
+	directCooldown := a.DirectCooldown
+	if directCooldown <= 0 {
+		directCooldown = 10 * time.Minute
+	}
+	failureWindow := a.ApplicationFailureWindow
+	if failureWindow <= 0 {
+		failureWindow = 12 * time.Second
 	}
 
 	networkFunc := a.Network
@@ -77,16 +95,33 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 		network.ID = "unknown"
 	}
 
+	class := traffic.Classify(traffic.Hint{
+		Destination: destination,
+		Protocol:    "tcp",
+		Purpose:     a.Purpose,
+	})
+
+	candidates := append([]carrier.Candidate(nil), a.Carriers...)
+	directDPIContext := dpi.Context{
+		NetworkID:    network.ID,
+		Destination:  destination,
+		TrafficClass: string(class),
+	}
+	if len(candidates) > 1 &&
+		a.Planner.DPI.RecentlyExhausted(directDPIContext, a.DPIStrategies, time.Now(), directCooldown) {
+		candidates = withoutDirectCarrier(candidates)
+	}
+
 	req := planner.Request{
 		Network:       network,
 		Destination:   destination,
 		Protocol:      "tcp",
 		Purpose:       a.Purpose,
-		Carriers:      a.Carriers,
+		Carriers:      candidates,
 		DPIStrategies: a.DPIStrategies,
 	}
 
-	maxAttempts := len(a.Carriers) + 2
+	maxAttempts := len(candidates) + 2
 	seen := make(map[string]bool)
 	var lastErr error
 
@@ -130,7 +165,32 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 			return nil, err
 		}
 
-		return newLearningConn(conn, a.Planner, plan, destination, connectLatency), nil
+		learnApplicationDPI := plan.Carrier.Carrier.Kind == carrier.KindDirect
+		if !learnApplicationDPI {
+			// The tunnel/SOCKS handshake itself exchanged authenticated or
+			// protocol-valid bytes with the visible first-hop endpoint.
+			if err := a.Planner.Observe(planner.Result{
+				Plan:        plan,
+				Destination: destination,
+				Protocol:    "tcp",
+				Success:     true,
+				Scope:       planner.ScopeDPI,
+				Latency:     connectLatency,
+			}); err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
+		}
+
+		return newLearningConn(
+			conn,
+			a.Planner,
+			plan,
+			destination,
+			connectLatency,
+			failureWindow,
+			learnApplicationDPI,
+		), nil
 	}
 
 	if lastErr == nil {
@@ -190,26 +250,52 @@ func (a *AdaptiveDialer) dialPlan(
 	}
 }
 
+func withoutDirectCarrier(candidates []carrier.Candidate) []carrier.Candidate {
+	out := make([]carrier.Candidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Kind == carrier.KindDirect {
+			continue
+		}
+		out = append(out, candidate)
+	}
+	if len(out) == 0 {
+		return candidates
+	}
+	return out
+}
+
 type learningConn struct {
 	net.Conn
 	planner        *planner.Planner
 	plan           planner.Plan
 	destination    string
 	connectLatency time.Duration
+	failureWindow  time.Duration
+	learnDPI       bool
 	started        time.Time
 
 	bytesRead    atomic.Int64
 	bytesWritten atomic.Int64
-	closeOnce    sync.Once
+	outcomeOnce  sync.Once
 }
 
-func newLearningConn(conn net.Conn, p *planner.Planner, plan planner.Plan, destination string, connectLatency time.Duration) net.Conn {
+func newLearningConn(
+	conn net.Conn,
+	p *planner.Planner,
+	plan planner.Plan,
+	destination string,
+	connectLatency time.Duration,
+	failureWindow time.Duration,
+	learnDPI bool,
+) net.Conn {
 	return &learningConn{
 		Conn:           conn,
 		planner:        p,
 		plan:           plan,
 		destination:    destination,
 		connectLatency: connectLatency,
+		failureWindow:  failureWindow,
+		learnDPI:       learnDPI,
 		started:        time.Now(),
 	}
 }
@@ -218,6 +304,10 @@ func (c *learningConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
 	if n > 0 {
 		c.bytesRead.Add(int64(n))
+		c.observeDPISuccess()
+	}
+	if n == 0 && err != nil {
+		c.maybeObserveDPIFailure(err)
 	}
 	return n, err
 }
@@ -227,31 +317,66 @@ func (c *learningConn) Write(p []byte) (int, error) {
 	if n > 0 {
 		c.bytesWritten.Add(int64(n))
 	}
+	if err != nil {
+		c.maybeObserveDPIFailure(err)
+	}
 	return n, err
 }
 
 func (c *learningConn) Close() error {
-	err := c.Conn.Close()
-	c.closeOnce.Do(func() {
-		read := c.bytesRead.Load()
-		if read <= 0 {
-			return
-		}
+	return c.Conn.Close()
+}
+
+func (c *learningConn) observeDPISuccess() {
+	if !c.learnDPI {
+		return
+	}
+	c.outcomeOnce.Do(func() {
 		elapsed := time.Since(c.started)
 		seconds := elapsed.Seconds()
 		if seconds < 0.001 {
 			seconds = 0.001
 		}
-		throughput := float64(read+c.bytesWritten.Load()) / seconds
+		throughput := float64(c.bytesRead.Load()+c.bytesWritten.Load()) / seconds
 		_ = c.planner.Observe(planner.Result{
-			Plan:        c.plan,
-			Destination: c.destination,
-			Protocol:    "tcp",
-			Success:     true,
-			Scope:       planner.ScopeDPI,
-			Latency:     c.connectLatency,
-			Throughput:  throughput,
+			Plan:                   c.plan,
+			Destination:            c.destination,
+			Protocol:               "tcp",
+			Success:                true,
+			Scope:                  planner.ScopeDPI,
+			CarrierAlreadyObserved: true,
+			Latency:                c.connectLatency,
+			Throughput:             throughput,
 		})
 	})
-	return err
+}
+
+func (c *learningConn) maybeObserveDPIFailure(err error) {
+	if !c.learnDPI {
+		return
+	}
+	elapsed := time.Since(c.started)
+	if !likelyDirectDPIFailure(
+		c.plan,
+		c.bytesWritten.Load(),
+		c.bytesRead.Load(),
+		err,
+		elapsed,
+		c.failureWindow,
+	) {
+		return
+	}
+
+	c.outcomeOnce.Do(func() {
+		_ = c.planner.Observe(planner.Result{
+			Plan:                   c.plan,
+			Destination:            c.destination,
+			Protocol:               "tcp",
+			Success:                false,
+			Scope:                  planner.ScopeDPI,
+			CarrierAlreadyObserved: true,
+			Latency:                elapsed,
+			Failure:                err.Error(),
+		})
+	})
 }
