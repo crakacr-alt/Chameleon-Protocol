@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Hack2p/chameleon/pkg/core"
-	chcrypto "github.com/Hack2p/chameleon/pkg/crypto"
-	idstore "github.com/Hack2p/chameleon/pkg/identity"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/core"
+	chcrypto "github.com/crakacr-alt/Chameleon-Protocol/pkg/crypto"
+	idstore "github.com/crakacr-alt/Chameleon-Protocol/pkg/identity"
 )
 
 func main() {
