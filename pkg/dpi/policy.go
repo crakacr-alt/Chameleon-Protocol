@@ -33,25 +33,25 @@ const (
 type FailureKind string
 
 const (
-	FailureNone          FailureKind = "none"
-	FailureTimeout       FailureKind = "timeout"
-	FailureReset         FailureKind = "reset"
-	FailureTLSHandshake  FailureKind = "tls-handshake"
-	FailureRedirect      FailureKind = "redirect"
-	FailureUDPBlackhole  FailureKind = "udp-blackhole"
-	FailureHighLoss      FailureKind = "high-loss"
-	FailureIncompatible  FailureKind = "incompatible"
+	FailureNone         FailureKind = "none"
+	FailureTimeout      FailureKind = "timeout"
+	FailureReset        FailureKind = "reset"
+	FailureTLSHandshake FailureKind = "tls-handshake"
+	FailureRedirect     FailureKind = "redirect"
+	FailureUDPBlackhole FailureKind = "udp-blackhole"
+	FailureHighLoss     FailureKind = "high-loss"
+	FailureIncompatible FailureKind = "incompatible"
 )
 
 // ProtocolClass keeps policies scoped to the protocol they can actually help.
 type ProtocolClass string
 
 const (
-	ProtocolAny   ProtocolClass = "any"
-	ProtocolHTTP  ProtocolClass = "http"
-	ProtocolTLS   ProtocolClass = "tls"
-	ProtocolQUIC  ProtocolClass = "quic"
-	ProtocolUDP   ProtocolClass = "udp"
+	ProtocolAny  ProtocolClass = "any"
+	ProtocolHTTP ProtocolClass = "http"
+	ProtocolTLS  ProtocolClass = "tls"
+	ProtocolQUIC ProtocolClass = "quic"
+	ProtocolUDP  ProtocolClass = "udp"
 )
 
 // StrategySpec describes one policy and its expected cost.
