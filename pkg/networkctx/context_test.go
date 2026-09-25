@@ -4,14 +4,14 @@ import "testing"
 
 func TestClassifyInterface(t *testing.T) {
 	cases := map[string]LinkType{
-		"eth0":       LinkEthernet,
-		"enp3s0":     LinkEthernet,
-		"wlan0":      LinkWiFi,
-		"wlp2s0":     LinkWiFi,
+		"eth0":        LinkEthernet,
+		"enp3s0":      LinkEthernet,
+		"wlan0":       LinkWiFi,
+		"wlp2s0":      LinkWiFi,
 		"rmnet_data0": LinkMobile,
-		"tailscale0": LinkVirtual,
-		"wg0":        LinkVirtual,
-		"utun4":      LinkVirtual,
+		"tailscale0":  LinkVirtual,
+		"wg0":         LinkVirtual,
+		"utun4":       LinkVirtual,
 	}
 
 	for name, want := range cases {
