@@ -274,9 +274,12 @@ type learningConn struct {
 	learnDPI       bool
 	started        time.Time
 
-	bytesRead    atomic.Int64
-	bytesWritten atomic.Int64
-	outcomeOnce  sync.Once
+	bytesRead      atomic.Int64
+	bytesWritten   atomic.Int64
+	firstWriteAt   atomic.Int64
+	writeAttempted atomic.Bool
+	deadlineOnce   sync.Once
+	outcomeOnce    sync.Once
 }
 
 func newLearningConn(
@@ -304,6 +307,9 @@ func (c *learningConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
 	if n > 0 {
 		c.bytesRead.Add(int64(n))
+		if c.learnDPI {
+			_ = c.Conn.SetReadDeadline(time.Time{})
+		}
 		c.observeDPISuccess()
 	}
 	if n == 0 && err != nil {
@@ -313,6 +319,16 @@ func (c *learningConn) Read(p []byte) (int, error) {
 }
 
 func (c *learningConn) Write(p []byte) (int, error) {
+	if len(p) > 0 && c.learnDPI && c.writeAttempted.CompareAndSwap(false, true) {
+		now := time.Now()
+		c.firstWriteAt.Store(now.UnixNano())
+		if c.expectsEarlyResponse() {
+			c.deadlineOnce.Do(func() {
+				_ = c.Conn.SetReadDeadline(now.Add(c.failureWindow))
+			})
+		}
+	}
+
 	n, err := c.Conn.Write(p)
 	if n > 0 {
 		c.bytesWritten.Add(int64(n))
@@ -355,10 +371,14 @@ func (c *learningConn) maybeObserveDPIFailure(err error) {
 	if !c.learnDPI {
 		return
 	}
-	elapsed := time.Since(c.started)
+	firstWrite := c.firstWriteAt.Load()
+	if firstWrite == 0 {
+		return
+	}
+	elapsed := time.Since(time.Unix(0, firstWrite))
 	if !likelyDirectDPIFailure(
 		c.plan,
-		c.bytesWritten.Load(),
+		c.writeAttempted.Load(),
 		c.bytesRead.Load(),
 		err,
 		elapsed,
@@ -379,4 +399,9 @@ func (c *learningConn) maybeObserveDPIFailure(err error) {
 			Failure:                err.Error(),
 		})
 	})
+}
+
+func (c *learningConn) expectsEarlyResponse() bool {
+	return c.plan.TrafficClass == traffic.ClassWeb ||
+		c.plan.TrafficClass == traffic.ClassStreaming
 }
