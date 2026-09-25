@@ -3,7 +3,6 @@ package dpi
 import (
 	"net"
 	"sync"
-	"time"
 )
 
 // FirstWriteConn applies one userspace DPI strategy only to the first Write.
@@ -41,8 +40,5 @@ func (c *FirstWriteConn) Write(p []byte) (int, error) {
 	return c.Conn.Write(p)
 }
 
-// Ensure net.Conn deadline methods remain those of the wrapped connection.
+// Compile-time check that the wrapper still satisfies net.Conn.
 var _ net.Conn = (*FirstWriteConn)(nil)
-
-// Keep time imported in generated docs/tooling that inspect net.Conn signatures.
-var _ = time.Time{}
