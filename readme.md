@@ -12,6 +12,9 @@ Chameleon Protocol — исследовательский адаптивный t
 - lightweight learner с сохранением решений в JSON
 - adaptive DPI Strategy Engine: direct-first выбор стратегии по сети, назначению и типу трафика
 - cross-platform userspace split/paced-split без обязательного root-доступа
+- NetworkContext detector, который отличает физическую сеть от Tailscale/WireGuard/tun
+- Carrier Engine: direct / Chameleon UDP / Chameleon TCP / внешний relay
+- Combined Adaptive Planner с раздельным обучением DPI-сбоев и недоступных маршрутов
 - долговременная session memory для накопления опыта профиля между запуском и сессиями
 - воспроизводимый benchmark и отчёт по метрикам
 - базовый session lifecycle и минимальный handshake через X25519
@@ -80,6 +83,10 @@ chameleon-protocol/
 │   ├── core/        # транспортная обёртка и кадрирование
 │   ├── crypto/      # AEAD и key-exchange примитивы
 │   ├── dpi/         # adaptive DPI strategy engine и userspace executor
+│   ├── carrier/     # обучение и выбор маршрута/carrier
+│   ├── networkctx/  # контекст текущей физической сети
+│   ├── planner/     # объединённый carrier + DPI decision engine
+│   ├── traffic/     # классификация web/streaming/realtime/bulk
 │   ├── experiment/  # сценарии и метрики
 │   ├── morph/       # padding и jitter
 │   └── state/       # детерминированная синхронизация epoch
@@ -126,6 +133,27 @@ chameleon-protocol/
 
 Подробности: [docs/adaptive_dpi.md](docs/adaptive_dpi.md)
 
+### pkg/carrier
+
+- Engine: выбирает direct/tunnel/relay по реальному опыту конкретной сети
+- отдельные веса для interactive, streaming и bulk traffic
+- JSON persistence между запусками
+- внешний relay можно использовать как optional fallback
+
+### pkg/networkctx
+
+- best-effort определение текущей физической сети
+- отдельная классификация virtual interfaces, чтобы не конфликтовать с Tailscale/WireGuard
+- privacy-friendly NetworkID fingerprint
+
+### pkg/planner
+
+- объединяет Carrier Engine и DPI Engine
+- различает DPI failure и carrier failure
+- при туннеле обучает DPI на видимом carrier endpoint, а не на конечном сайте
+
+Подробности: [docs/adaptive_planner.md](docs/adaptive_planner.md)
+
 ### pkg/experiment
 
 - Scenario: воспроизводимый benchmark поверх loopback UDP
@@ -163,7 +191,7 @@ chameleon-protocol/
 
 ### Требования
 
-- Go 1.22+
+- Go 1.25+
 - Linux, macOS или Windows с обычной Go toolchain
 
 ### Сервер
@@ -203,6 +231,25 @@ go run ./cmd/client \
 
 ```bash
 go run ./cmd/client --target=127.0.0.1:9000 --profile=webrtc --burst=3 --psk=research-secret
+```
+
+### Adaptive planner
+
+Показать план для текущей сети:
+
+```bash
+go run ./cmd/plan \
+  --destination=example.com:443 \
+  --protocol=tcp \
+  --purpose=web \
+  --chameleon-udp=YOUR_SERVER:9000 \
+  --chameleon-tcp=YOUR_SERVER:443
+```
+
+Существующий Tailscale/DERP или другой sidecar можно передать как optional relay:
+
+```bash
+go run ./cmd/plan --destination=example.com:443 --relay=127.0.0.1:1080
 ```
 
 ### Бенчмарк
