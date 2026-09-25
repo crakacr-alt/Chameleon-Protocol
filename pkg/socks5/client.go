@@ -11,18 +11,36 @@ import (
 	"time"
 )
 
+// RawDialFunc opens the TCP connection to the SOCKS5 relay.
+type RawDialFunc func(context.Context, string) (net.Conn, error)
+
 // DialContext connects to destination through an existing SOCKS5 proxy.
 // It supports the no-auth method, which is suitable for a localhost sidecar.
 func DialContext(ctx context.Context, proxyAddress, destination string, timeout time.Duration) (net.Conn, error) {
+	if timeout <= 0 {
+		timeout = 8 * time.Second
+	}
+	dialer := &net.Dialer{Timeout: timeout}
+	return DialContextWithDialer(ctx, proxyAddress, destination, timeout, func(ctx context.Context, address string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "tcp", address)
+	})
+}
+
+// DialContextWithDialer lets callers wrap the first hop before the SOCKS
+// greeting is sent. Chameleon uses this to apply a learned userspace strategy
+// to an existing relay connection without owning another VPN interface.
+func DialContextWithDialer(ctx context.Context, proxyAddress, destination string, timeout time.Duration, dial RawDialFunc) (net.Conn, error) {
 	if strings.TrimSpace(proxyAddress) == "" {
 		return nil, fmt.Errorf("proxy address must not be empty")
+	}
+	if dial == nil {
+		return nil, fmt.Errorf("raw dial function is nil")
 	}
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
 
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", proxyAddress)
+	conn, err := dial(ctx, proxyAddress)
 	if err != nil {
 		return nil, fmt.Errorf("dial SOCKS5 proxy: %w", err)
 	}
