@@ -55,7 +55,6 @@ func TestCarrierOnlySuccessDoesNotMarkDPISuccess(t *testing.T) {
 	}
 }
 
-
 func TestDPIFailureCanSkipDuplicateCarrierCredit(t *testing.T) {
 	p := newTestPlanner(t)
 	req := Request{
