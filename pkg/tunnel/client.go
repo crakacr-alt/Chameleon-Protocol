@@ -7,17 +7,35 @@ import (
 	"time"
 )
 
+// RawDialFunc opens the TCP connection to the Chameleon server.
+type RawDialFunc func(context.Context, string) (net.Conn, error)
+
 // DialContext opens one authenticated Chameleon TCP tunnel to destination.
 func DialContext(ctx context.Context, serverAddress, destination, psk string, timeout time.Duration) (net.Conn, error) {
+	if timeout <= 0 {
+		timeout = 8 * time.Second
+	}
+	dialer := &net.Dialer{Timeout: timeout}
+	return DialContextWithDialer(ctx, serverAddress, destination, psk, timeout, func(ctx context.Context, address string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "tcp", address)
+	})
+}
+
+// DialContextWithDialer is the same tunnel dial but lets the caller wrap the
+// first hop. The local proxy uses this to apply a learned first-write strategy
+// only to the connection visible to the local network.
+func DialContextWithDialer(ctx context.Context, serverAddress, destination, psk string, timeout time.Duration, dial RawDialFunc) (net.Conn, error) {
 	if stringsTrim(serverAddress) == "" {
 		return nil, fmt.Errorf("server address must not be empty")
+	}
+	if dial == nil {
+		return nil, fmt.Errorf("raw dial function is nil")
 	}
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
 
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", serverAddress)
+	conn, err := dial(ctx, serverAddress)
 	if err != nil {
 		return nil, fmt.Errorf("dial tunnel server: %w", err)
 	}
