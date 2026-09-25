@@ -2,6 +2,37 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.4.0] - 2026-09-25
+
+### Added
+
+- добавлен `pkg/networkctx` для best-effort определения физического сетевого контекста без root;
+- виртуальные интерфейсы Tailscale/WireGuard/tun/tap отделены от физической identity сети;
+- NetworkID сохраняется как короткий fingerprint без записи полного локального IP;
+- добавлен `pkg/traffic` с классами web, interactive, streaming, bulk и realtime;
+- добавлен `pkg/carrier` с локальной памятью маршрутов по `network + destination + traffic class + protocol`;
+- carrier pool поддерживает direct, chameleon-udp, chameleon-tcp и внешний relay capability;
+- добавлен `pkg/planner`, объединяющий Carrier Engine и DPI Strategy Engine в один план;
+- DPI target автоматически меняется с конечного сайта на carrier endpoint, когда используется туннельный маршрут;
+- добавлены failure scopes `carrier`, `dpi` и `both`, чтобы DPI-сбой не портил статистику рабочего маршрута;
+- добавлена CLI `cmd/plan` для просмотра выбранного плана и записи измеренного результата;
+- добавлен документ `docs/adaptive_planner.md`.
+
+### Changed
+
+- direct остаётся первым выбором без истории;
+- игры/realtime сильнее штрафуют latency, streaming/bulk сильнее учитывают throughput;
+- relay/DERP рассматривается как подключаемый fallback, а не обязательная основа протокола;
+- при подтверждённом DPI-сбое planner может оставить direct carrier и эскалировать только DPI strategy.
+
+### Tests
+
+- добавлены тесты определения virtual/physical interface;
+- добавлены тесты traffic classifier;
+- добавлены тесты carrier compatibility, fallback и persistence;
+- добавлены интеграционные тесты combined planner;
+- добавлена regression-проверка: DPI failure не должен выталкивать рабочий direct carrier.
+
 ## [0.3.0] - 2026-09-25
 
 ### Added
