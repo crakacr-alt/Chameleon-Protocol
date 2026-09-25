@@ -8,7 +8,8 @@ import (
 	"fmt"
 )
 
-// WrapIdentityPayload creates a compact identity envelope with auth tag.
+// WrapIdentityPayload creates a compact identity envelope with an HMAC tag.
+// Wire format after base64 decoding is: JSON body || 32-byte HMAC-SHA256 tag.
 func WrapIdentityPayload(identity, psk string, payload []byte) ([]byte, error) {
 	if identity == "" {
 		return nil, fmt.Errorf("identity must not be empty")
@@ -28,19 +29,20 @@ func WrapIdentityPayload(identity, psk string, payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("marshal identity payload: %w", err)
 	}
 
-	tag := hmac.New(sha256.New, []byte(psk))
-	if _, err := tag.Write(body); err != nil {
+	mac := hmac.New(sha256.New, []byte(psk))
+	if _, err := mac.Write(body); err != nil {
 		return nil, fmt.Errorf("compute identity tag: %w", err)
 	}
 
-	wrapped := append([]byte(nil), body...)
-	wrapped = append(wrapped, []byte(".")...)
-	wrapped = append(wrapped, tag.Sum(nil)...)
+	wrapped := make([]byte, 0, len(body)+sha256.Size)
+	wrapped = append(wrapped, body...)
+	wrapped = append(wrapped, mac.Sum(nil)...)
 
 	return []byte(base64.StdEncoding.EncodeToString(wrapped)), nil
 }
 
 // ParseIdentityPayload verifies an identity envelope and returns the decoded identity and payload.
+// It also accepts the short-lived legacy format JSON body || "." || tag.
 func ParseIdentityPayload(encoded []byte, psk string) (string, []byte, error) {
 	if len(encoded) == 0 {
 		return "", nil, fmt.Errorf("encoded identity payload must not be empty")
@@ -53,26 +55,23 @@ func ParseIdentityPayload(encoded []byte, psk string) (string, []byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("decode envelope: %w", err)
 	}
-
-	parts := len(decoded)
-	if parts < sha256.Size {
+	if len(decoded) <= sha256.Size {
 		return "", nil, fmt.Errorf("identity envelope too short")
 	}
 
-	body := decoded[:parts-sha256.Size]
-	tag := decoded[parts-sha256.Size:]
+	body := decoded[:len(decoded)-sha256.Size]
+	tag := decoded[len(decoded)-sha256.Size:]
 
-	want := hmac.New(sha256.New, []byte(psk))
-	if _, err := want.Write(body); err != nil {
-		return "", nil, fmt.Errorf("compute envelope tag: %w", err)
-	}
+	if !validIdentityTag(body, tag, psk) {
+		if len(body) == 0 || body[len(body)-1] != '.' {
+			return "", nil, fmt.Errorf("identity envelope authentication failed")
+		}
 
-	if !hmac.Equal(want.Sum(nil), tag) {
-		return "", nil, fmt.Errorf("identity envelope authentication failed")
-	}
-
-	if idx := bytesIndex(body, '.'); idx >= 0 {
-		body = body[idx+1:]
+		legacyBody := body[:len(body)-1]
+		if !validIdentityTag(legacyBody, tag, psk) {
+			return "", nil, fmt.Errorf("identity envelope authentication failed")
+		}
+		body = legacyBody
 	}
 
 	var envelope struct {
@@ -89,11 +88,8 @@ func ParseIdentityPayload(encoded []byte, psk string) (string, []byte, error) {
 	return envelope.Identity, envelope.Payload, nil
 }
 
-func bytesIndex(data []byte, b byte) int {
-	for i := range data {
-		if data[i] == b {
-			return i
-		}
-	}
-	return -1
+func validIdentityTag(body, tag []byte, psk string) bool {
+	mac := hmac.New(sha256.New, []byte(psk))
+	_, _ = mac.Write(body)
+	return hmac.Equal(mac.Sum(nil), tag)
 }
