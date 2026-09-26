@@ -83,11 +83,16 @@ type Engine struct {
 	mu        sync.Mutex
 	StorePath string                       `json:"-"`
 	Entries   map[string]map[string]*Stats `json:"entries"`
+	policy    ScorePolicy                  `json:"-"`
 }
 
 // NewEngine creates or loads a carrier memory.
 func NewEngine(storePath string) (*Engine, error) {
-	e := &Engine{StorePath: storePath, Entries: make(map[string]map[string]*Stats)}
+	e := &Engine{
+		StorePath: storePath,
+		Entries:   make(map[string]map[string]*Stats),
+		policy:    DefaultScorePolicy(),
+	}
 	if storePath == "" {
 		return e, nil
 	}
@@ -191,7 +196,7 @@ func (e *Engine) Choose(ctx Context, candidates []Candidate) (Decision, error) {
 	ranking := make([]ranked, 0, len(compatible))
 	for _, candidate := range compatible {
 		stats := statsByCarrier[candidate.Name]
-		score, known := carrierScore(ctx.TrafficClass, candidate, stats, time.Now())
+		score, known := carrierScore(ctx.TrafficClass, candidate, stats, time.Now(), e.scorePolicyLocked())
 		ranking = append(ranking, ranked{candidate: candidate, score: score, known: known})
 	}
 	sort.SliceStable(ranking, func(i, j int) bool {
@@ -312,14 +317,21 @@ func filterCompatible(protocol string, candidates []Candidate) []Candidate {
 	return out
 }
 
-func carrierScore(trafficClass string, candidate Candidate, stats *Stats, now time.Time) (float64, bool) {
-	baseline := 0.25 - candidate.Cost
+func carrierScore(
+	trafficClass string,
+	candidate Candidate,
+	stats *Stats,
+	now time.Time,
+	policy ScorePolicy,
+) (float64, bool) {
+	policy = policy.normalized()
+	baseline := 0.25 - candidate.Cost*policy.CostScale
 	if stats == nil || stats.Attempts == 0 {
 		return baseline, false
 	}
 
 	successRate := float64(stats.Successes) / float64(stats.Attempts)
-	learned := successRate*7.0 - float64(stats.FailureStreak)*1.8 - candidate.Cost
+	learned := successRate*7.0 - float64(stats.FailureStreak)*1.8 - candidate.Cost*policy.CostScale
 
 	latencyPenalty := math.Min(float64(stats.AvgLatency)/float64(time.Second), 2.5)
 	jitterPenalty := math.Min(float64(stats.AvgJitter)/float64(time.Second), 1.5)
@@ -327,19 +339,19 @@ func carrierScore(trafficClass string, candidate Candidate, stats *Stats, now ti
 
 	switch strings.ToLower(trafficClass) {
 	case "interactive", "realtime":
-		learned -= latencyPenalty * 2.2
-		learned -= jitterPenalty * 1.7
-		learned += throughputBoost * 0.25
+		learned -= latencyPenalty * 2.2 * policy.LatencyScale
+		learned -= jitterPenalty * 1.7 * policy.JitterScale
+		learned += throughputBoost * 0.25 * policy.ThroughputScale
 	case "streaming":
-		learned -= latencyPenalty * 0.7
-		learned -= jitterPenalty * 0.4
-		learned += throughputBoost * 1.5
+		learned -= latencyPenalty * 0.7 * policy.LatencyScale
+		learned -= jitterPenalty * 0.4 * policy.JitterScale
+		learned += throughputBoost * 1.5 * policy.ThroughputScale
 	case "bulk":
-		learned -= latencyPenalty * 0.3
-		learned += throughputBoost * 2.0
+		learned -= latencyPenalty * 0.3 * policy.LatencyScale
+		learned += throughputBoost * 2.0 * policy.ThroughputScale
 	default:
-		learned -= latencyPenalty
-		learned += throughputBoost
+		learned -= latencyPenalty * policy.LatencyScale
+		learned += throughputBoost * policy.ThroughputScale
 	}
 
 	freshness := evidenceFreshness(stats, now)
