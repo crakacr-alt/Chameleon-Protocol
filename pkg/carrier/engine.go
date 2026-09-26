@@ -211,7 +211,6 @@ func (e *Engine) Choose(ctx Context, candidates []Candidate) (Decision, error) {
 	}, nil
 }
 
-// Snapshot returns a copy for status output and tests.
 // HasEvidence reports whether any supplied carrier has observations in this exact
 // context. Callers use it to decide when a small connection race is worth the
 // extra work on a previously unknown network path.
@@ -231,6 +230,7 @@ func (e *Engine) HasEvidence(ctx Context, candidates []Candidate) bool {
 	return false
 }
 
+// Snapshot returns a copy for status output and tests.
 func (e *Engine) Snapshot(ctx Context) map[string]Stats {
 	if e == nil {
 		return nil
