@@ -23,6 +23,8 @@ Chameleon Protocol — исследовательский адаптивный t
 - time decay маршрутов: старая блокировка постепенно перестаёт диктовать выбор
 - authenticated TCP/TLS/QUIC first-hop probes с latency/jitter/loss
 - IPv4/IPv6 Happy-Eyeballs-style racing для диагностики сетевого пути
+- единый Chameleon 1.0 client: import/connect/status/doctor/show
+- стабильный config schema v1 и Linux/Windows service install
 - one-command VPS installer + hardened systemd + automatic health monitor
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
 - автоматическое распознавание early EOF/RST/blackhole после успешного TCP connect
@@ -338,6 +340,32 @@ sudo ./deploy/install-server.sh
 Installer автоматически включает TLS-front, systemd restart и health monitor.
 
 Подробнее: [docs/server_install.md](docs/server_install.md) и [docs/socks_tunnel.md](docs/socks_tunnel.md)
+
+### Chameleon 1.0 client
+
+Обычный клиентский сценарий теперь не требует ручной настройки transport flags:
+
+```bash
+chameleon import client-profile.txt
+chameleon doctor
+chameleon connect
+```
+
+По умолчанию поднимается SOCKS5 `127.0.0.1:1080` с TCP CONNECT и UDP ASSOCIATE.
+
+Linux service:
+
+```bash
+sudo ./deploy/install-client.sh /path/to/client-profile.txt
+```
+
+Windows service (PowerShell от администратора):
+
+```powershell
+.\deploy\install-client.ps1 -Profile C:\path\client-profile.txt
+```
+
+Подробнее: [docs/client.md](docs/client.md)
 
 ### Диагностика transport path
 
