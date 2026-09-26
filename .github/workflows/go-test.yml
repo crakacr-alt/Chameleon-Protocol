@@ -39,6 +39,21 @@ jobs:
         shell: bash
         run: bash -n deploy/*.sh deploy/chameleonctl
 
+      - name: Check PowerShell installer syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "deploy/install-client.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
       - name: Vet
         run: go vet ./...
 
@@ -47,3 +62,6 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+      - name: Cross-build Windows client
+        run: GOOS=windows GOARCH=amd64 go build -o /tmp/chameleon.exe ./cmd/chameleon
