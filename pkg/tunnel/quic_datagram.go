@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	quicDatagramALPN          = "chameleon-quic-dgram/1"
-	datagramSessionDestination = "udp.session:1"
-	datagramFrameVersion byte = 1
-	maxDatagramPlain          = 1080
-	maxDatagramDestinations   = 64
+	quicDatagramALPN                = "chameleon-quic-dgram/1"
+	datagramSessionDestination      = "udp.session:1"
+	datagramFrameVersion       byte = 1
+	maxDatagramPlain                = 1080
+	maxDatagramDestinations         = 64
 )
 
 // ErrDatagramTooLarge is returned before sending a payload that cannot fit in
