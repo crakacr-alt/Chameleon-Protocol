@@ -160,7 +160,6 @@ func TestDPIFailureKeepsDirectCarrierAndEscalatesStrategy(t *testing.T) {
 	}
 }
 
-
 func TestPlannerUsesDirectDPIForQUIC(t *testing.T) {
 	p := newTestPlanner(t)
 	networkID := "mobile-quic"
