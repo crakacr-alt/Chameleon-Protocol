@@ -33,6 +33,7 @@ type Config struct {
 	StateDir       string   `json:"state_dir,omitempty"`
 	DirectCooldown Duration `json:"direct_cooldown"`
 	FailureWindow  Duration `json:"failure_window"`
+	Preset         string   `json:"preset"`
 	Bypass         []string `json:"bypass,omitempty"`
 }
 
@@ -63,6 +64,7 @@ func Default() Config {
 		Mode:           ModeSmart,
 		Listen:         "127.0.0.1:1080",
 		UDPMode:        "auto",
+		Preset:         "auto",
 		DirectCooldown: Duration(10 * time.Minute),
 		FailureWindow:  Duration(12 * time.Second),
 	}
@@ -123,6 +125,9 @@ func (c *Config) Migrate() error {
 	if c.UDPMode == "" {
 		c.UDPMode = "auto"
 	}
+	if c.Preset == "" {
+		c.Preset = "auto"
+	}
 	if c.DirectCooldown == 0 {
 		c.DirectCooldown = Duration(10 * time.Minute)
 	}
@@ -148,6 +153,11 @@ func (c Config) Validate() error {
 	case "auto", "direct", "quic":
 	default:
 		return fmt.Errorf("unsupported udp_mode %q", c.UDPMode)
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Preset)) {
+	case "auto", "fast", "stable", "gaming", "streaming":
+	default:
+		return fmt.Errorf("unsupported preset %q", c.Preset)
 	}
 	if c.Mode == ModeProxy && c.QUICServer == "" && c.TLSServer == "" && c.TCPServer == "" {
 		return fmt.Errorf("proxy mode requires at least one Chameleon server endpoint")
