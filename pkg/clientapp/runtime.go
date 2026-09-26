@@ -6,6 +6,7 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/carrier"
@@ -13,30 +14,27 @@ import (
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/dpi"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/networkctx"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/planner"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/policy"
 	adaptiveproxy "github.com/crakacr-alt/Chameleon-Protocol/pkg/proxy"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/socks5"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
 )
 
 type Runtime struct {
-	Config clientconfig.Config
+	mu            sync.RWMutex
+	config        clientconfig.Config
+	carrierEngine *carrier.Engine
+	dpiEngine     *dpi.Engine
+	planner       *planner.Planner
 }
 
 func New(cfg clientconfig.Config) (*Runtime, error) {
+	if err := cfg.Migrate(); err != nil {
+		return nil, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &Runtime{Config: cfg}, nil
-}
-
-func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
-	if r == nil {
-		return fmt.Errorf("client runtime is nil")
-	}
-	if listener == nil {
-		return fmt.Errorf("listener is nil")
-	}
-	cfg := r.Config
 
 	carrierStore := ""
 	dpiStore := ""
@@ -47,16 +45,70 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 
 	carrierEngine, err := carrier.NewEngine(carrierStore)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	scorePolicy, err := policy.CarrierPolicy(cfg.Preset)
+	if err != nil {
+		return nil, err
+	}
+	carrierEngine.SetScorePolicy(scorePolicy)
+
 	dpiEngine, err := dpi.NewEngine(dpiStore)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p, err := planner.New(carrierEngine, dpiEngine)
 	if err != nil {
+		return nil, err
+	}
+
+	return &Runtime{
+		config:        cfg,
+		carrierEngine: carrierEngine,
+		dpiEngine:     dpiEngine,
+		planner:       p,
+	}, nil
+}
+
+func (r *Runtime) ConfigSnapshot() clientconfig.Config {
+	if r == nil {
+		return clientconfig.Config{}
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cfg := r.config
+	cfg.Bypass = append([]string(nil), r.config.Bypass...)
+	return cfg
+}
+
+func (r *Runtime) SetPreset(name string) error {
+	if r == nil || r.carrierEngine == nil {
+		return fmt.Errorf("client runtime is not initialized")
+	}
+	preset, err := policy.Normalize(name)
+	if err != nil {
 		return err
 	}
+	scorePolicy, err := policy.CarrierPolicy(string(preset))
+	if err != nil {
+		return err
+	}
+	r.carrierEngine.SetScorePolicy(scorePolicy)
+
+	r.mu.Lock()
+	r.config.Preset = string(preset)
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
+	if r == nil || r.planner == nil {
+		return fmt.Errorf("client runtime is nil")
+	}
+	if listener == nil {
+		return fmt.Errorf("listener is nil")
+	}
+	cfg := r.ConfigSnapshot()
 
 	candidates := carrier.WithQUIC(
 		carrier.WithTLS(
@@ -75,7 +127,7 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 	}
 
 	adaptive := &adaptiveproxy.AdaptiveDialer{
-		Planner:                  p,
+		Planner:                  r.planner,
 		Carriers:                 candidates,
 		DPIStrategies:            dpi.DefaultStrategies(),
 		PSK:                      cfg.PSK,
@@ -131,7 +183,8 @@ func (r *Runtime) ListenAndServe(ctx context.Context) error {
 	if r == nil {
 		return fmt.Errorf("client runtime is nil")
 	}
-	listener, err := net.Listen("tcp", r.Config.Listen)
+	cfg := r.ConfigSnapshot()
+	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return fmt.Errorf("listen SOCKS: %w", err)
 	}
