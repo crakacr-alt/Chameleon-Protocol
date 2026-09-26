@@ -36,6 +36,8 @@ Status: implemented in release/v1.0.0; release requires green CI.
 - documented Windows binary/service workflow.
 
 ## 1.1 — Desktop UX
+
+Status: implemented in release/v1.1.0; release requires green CI.
 - local control API;
 - desktop status UI;
 - Auto/Fast/Stable/Gaming/Streaming policy presets;
