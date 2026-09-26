@@ -216,6 +216,21 @@ func (a *AdaptiveDialer) dialPlan(
 		}
 		return dpi.NewFirstWriteConn(conn, strategy), nil
 
+	case carrier.KindChameleonQUIC:
+		endpoint := plan.Carrier.Carrier.Endpoint
+		if endpoint == "" {
+			return nil, fmt.Errorf("chameleon QUIC carrier has no endpoint")
+		}
+		return tunnel.DialQUICContext(
+			ctx,
+			endpoint,
+			destination,
+			a.PSK,
+			timeout,
+			a.TLSConfig,
+			tunnel.QUICConfig{},
+		)
+
 	case carrier.KindChameleonTLS:
 		endpoint := plan.Carrier.Carrier.Endpoint
 		if endpoint == "" {
