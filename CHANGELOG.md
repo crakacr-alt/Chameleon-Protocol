@@ -2,6 +2,44 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.9.1] - 2026-09-26
+
+### Added
+
+- SOCKS5 `UDP ASSOCIATE` в локальном proxy;
+- настоящий QUIC DATAGRAM data path для application UDP;
+- отдельный ALPN `chameleon-quic-dgram/1`, совместимый с stream-mode 0.9.0;
+- PSK-authenticated control handshake до разрешения UDP relay;
+- destination + payload datagram дополнительно защищаются Chameleon AEAD внутри QUIC TLS 1.3;
+- direct UDP association без tunnel;
+- client modes `--udp-mode=auto|direct|quic`;
+- VPS UDP relay сохраняет packet boundaries и держит per-destination UDP sockets;
+- лимит до 64 UDP destinations на одну association;
+- явная `ErrDatagramTooLarge` вместо скрытой fragmentation;
+- документация `docs/udp.md`.
+
+### Changed
+
+- `chameleon-quic` теперь честно объявляет `SupportsUDP=true`, потому что реальный executor появился;
+- server QUIC listener одновременно обслуживает старый reliable-stream ALPN и новый datagram ALPN;
+- SOCKS5 server теперь может обслуживать CONNECT и UDP ASSOCIATE через независимые transport interfaces.
+
+### Tests
+
+- SOCKS5 UDP ASSOCIATE round-trip;
+- SOCKS UDP framing для IPv4, IPv6 и domain destinations;
+- fragmented SOCKS UDP rejection;
+- direct UDP echo test;
+- QUIC DATAGRAM end-to-end через Chameleon server;
+- wrong-PSK rejection;
+- explicit datagram size-limit test.
+
+### Notes
+
+- 0.9.1 не фрагментирует большие application UDP payload;
+- `auto` в этой версии выбирает QUIC UDP при наличии настроенного QUIC endpoint, иначе direct UDP;
+- learned direct-vs-QUIC UDP probing выделен в 0.9.2.
+
 ## [0.9.0] - 2026-09-26
 
 ### Added
