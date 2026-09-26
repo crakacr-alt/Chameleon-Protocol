@@ -123,7 +123,7 @@ func NewQUICListener(address string, tlsConfig *tls.Config, server *Server, cfg 
 
 	tlsCopy := tlsConfig.Clone()
 	tlsCopy.MinVersion = tls.VersionTLS13
-	tlsCopy.NextProtos = []string{quicALPN}
+	tlsCopy.NextProtos = []string{quicALPN, quicDatagramALPN}
 
 	listener, err := quic.ListenAddr(address, tlsCopy, cfg.quicConfig())
 	if err != nil {
@@ -171,6 +171,19 @@ func (l *QUICListener) Serve(ctx context.Context) error {
 }
 
 func (l *QUICListener) handleConn(ctx context.Context, conn *quic.Conn) {
+	switch conn.ConnectionState().TLS.NegotiatedProtocol {
+	case quicDatagramALPN:
+		if err := l.server.handleQUICDatagramConn(ctx, conn); err != nil {
+			_ = conn.CloseWithError(1, "datagram session failed")
+		}
+		return
+	case quicALPN:
+		// Continue with the 0.9.0 reliable stream mode.
+	default:
+		_ = conn.CloseWithError(1, "unsupported ALPN")
+		return
+	}
+
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		_ = conn.CloseWithError(1, "stream accept failed")
