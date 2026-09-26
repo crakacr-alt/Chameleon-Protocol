@@ -191,7 +191,6 @@ func TestQUICPreferredBeforeTLSAfterDirectFailure(t *testing.T) {
 	}
 }
 
-
 func TestCarrierTracksLatencyJitter(t *testing.T) {
 	e, err := NewEngine("")
 	if err != nil {
