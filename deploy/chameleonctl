@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE="/etc/chameleon/tunnel.env"
+CLIENT_FILE="/etc/chameleon/client-profile.txt"
+
+usage() {
+  cat <<'EOF'
+Usage: chameleonctl <command>
+
+Commands:
+  status   Show service and timer state
+  logs     Follow tunnel logs
+  client   Print root-only client connection profile
+  health   Run the local TLS health check now
+  restart  Restart tunnel service
+EOF
+}
+
+case "${1:-}" in
+  status)
+    systemctl status chameleon-tunnel.service --no-pager
+    printf '\n'
+    systemctl status chameleon-health.timer --no-pager
+    ;;
+  logs)
+    exec journalctl -u chameleon-tunnel.service -f
+    ;;
+  client)
+    [ "$(id -u)" -eq 0 ] || {
+      echo "client profile contains the PSK; run with sudo" >&2
+      exit 1
+    }
+    cat "$CLIENT_FILE"
+    ;;
+  health)
+    exec /usr/local/lib/chameleon/healthcheck.sh
+    ;;
+  restart)
+    systemctl restart chameleon-tunnel.service
+    systemctl status chameleon-tunnel.service --no-pager
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
