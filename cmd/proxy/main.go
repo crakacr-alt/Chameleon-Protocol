@@ -19,9 +19,11 @@ import (
 	adaptiveproxy "github.com/crakacr-alt/Chameleon-Protocol/pkg/proxy"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/socks5"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
+	buildversion "github.com/crakacr-alt/Chameleon-Protocol/pkg/version"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "print Chameleon version and exit")
 	listen := flag.String("listen", "127.0.0.1:1080", "local SOCKS5 listen address")
 	chameleonTCP := flag.String("chameleon-tcp", "", "optional raw Chameleon TCP tunnel endpoint")
 	chameleonTLS := flag.String("chameleon-tls", "", "optional TLS-fronted Chameleon tunnel endpoint")
@@ -37,6 +39,11 @@ func main() {
 	directCooldown := flag.Duration("direct-cooldown", 10*time.Minute, "temporarily skip direct after all DPI strategies fail")
 	failureWindow := flag.Duration("failure-window", 12*time.Second, "first-response window used for automatic DPI failure learning")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(buildversion.Current)
+		return
+	}
 
 	tunnelPSK := *psk
 	if tunnelPSK == "" {
