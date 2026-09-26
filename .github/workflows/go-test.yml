@@ -19,6 +19,12 @@ jobs:
           go-version: "1.27"
           cache: true
 
+      - name: Check module tidiness
+        shell: bash
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
       - name: Check formatting
         shell: bash
         run: |
