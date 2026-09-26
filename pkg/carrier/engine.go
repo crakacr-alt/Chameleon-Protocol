@@ -17,8 +17,9 @@ type Kind string
 
 const (
 	KindDirect       Kind = "direct"
-	KindChameleonUDP Kind = "chameleon-udp"
-	KindChameleonTCP Kind = "chameleon-tcp"
+	KindChameleonUDP  Kind = "chameleon-udp"
+	KindChameleonQUIC Kind = "chameleon-quic"
+	KindChameleonTCP  Kind = "chameleon-tcp"
 	KindChameleonTLS Kind = "chameleon-tls"
 	KindRelay        Kind = "relay"
 )
