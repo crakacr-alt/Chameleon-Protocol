@@ -112,7 +112,12 @@ func (p *Planner) Choose(req Request) (Plan, error) {
 		Destination:  dpiTarget,
 		TrafficClass: string(class),
 	}
-	dpiDecision, err := p.DPI.Choose(dpiCtx, req.DPIStrategies)
+	dpiStrategies := req.DPIStrategies
+	if carrierDecision.Carrier.Kind == carrier.KindChameleonQUIC ||
+		carrierDecision.Carrier.Kind == carrier.KindChameleonUDP {
+		dpiStrategies = directOnlyDPI(req.DPIStrategies)
+	}
+	dpiDecision, err := p.DPI.Choose(dpiCtx, dpiStrategies)
 	if err != nil {
 		return Plan{}, fmt.Errorf("choose dpi strategy: %w", err)
 	}
@@ -211,4 +216,18 @@ func (p *Planner) Observe(result Result) error {
 	}
 
 	return nil
+}
+
+
+func directOnlyDPI(strategies []dpi.Strategy) []dpi.Strategy {
+	for _, strategy := range strategies {
+		if strategy.Name == "direct" {
+			return []dpi.Strategy{strategy}
+		}
+	}
+	defaults := dpi.DefaultStrategies()
+	if len(defaults) == 0 {
+		return nil
+	}
+	return defaults[:1]
 }
