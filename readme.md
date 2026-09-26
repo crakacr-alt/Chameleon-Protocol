@@ -18,6 +18,9 @@ Chameleon Protocol — исследовательский адаптивный t
 - реальный local SOCKS5 proxy без системного TUN/VPN
 - encrypted Chameleon TCP tunnel до VPS как рабочий fallback carrier
 - TLS-fronted Chameleon carrier с certificate pinning и decoy HTTPS response
+- real QUIC carrier поверх UDP с TLS 1.3 и тем же Chameleon authenticated tunnel
+- first-use adaptive race: direct стартует первым, fallback подключается только если direct не успел быстро победить
+- time decay маршрутов: старая блокировка постепенно перестаёт диктовать выбор
 - one-command VPS installer + hardened systemd + automatic health monitor
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
 - автоматическое распознавание early EOF/RST/blackhole после успешного TCP connect
@@ -190,6 +193,13 @@ chameleon-protocol/
 
 Подробности: [docs/socks_tunnel.md](docs/socks_tunnel.md)
 
+### QUIC carrier
+
+Начиная с 0.9 сервер может одновременно принимать TLS/TCP и QUIC/UDP на одном номере порта.
+QUIC переносит надёжные proxy streams через настоящий UDP transport и участвует в adaptive selection.
+
+Подробности: [docs/quic.md](docs/quic.md)
+
 ### pkg/experiment
 
 - Scenario: воспроизводимый benchmark поверх loopback UDP
@@ -227,7 +237,7 @@ chameleon-protocol/
 
 ### Требования
 
-- Go 1.25+
+- Go 1.27+
 - Linux, macOS или Windows с обычной Go toolchain
 
 ### Сервер: one-command VPS install
@@ -394,7 +404,7 @@ ss -lunp | grep 9000
 - benchmark comparison matrix
 
 **Still next**
-- UDP/QUIC general-purpose proxy path
+- arbitrary UDP datagram proxy path / SOCKS5 UDP ASSOCIATE (0.9.1)
 - session resume across carrier switches
 - fingerprint UX и optional configured trust anchors поверх TOFU
 - full epoch key rekey state machine, интегрированный в data path
@@ -413,6 +423,14 @@ ss -lunp | grep 9000
 - fuzzing, fault injection и независимого security review;
 - benchmark-набора с внешними traffic classifiers и сырыми reproducible results;
 - реальных desktop/mobile clients.
+
+---
+
+## Версии и roadmap
+
+Текущая версия хранится в `VERSION`, а runtime binaries поддерживают `--version`.
+Правила выпуска: [docs/versioning.md](docs/versioning.md).
+План развития до 2.0: [ROADMAP.md](ROADMAP.md).
 
 ---
 
