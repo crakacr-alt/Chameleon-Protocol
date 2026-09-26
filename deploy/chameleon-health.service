@@ -1,0 +1,8 @@
+[Unit]
+Description=Chameleon Protocol local health check
+After=chameleon-tunnel.service
+Requires=chameleon-tunnel.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/chameleon/healthcheck.sh
