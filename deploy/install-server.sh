@@ -184,7 +184,7 @@ ensure_certificate() {
 
   log "generating pinned self-signed TLS certificate"
   openssl ecparam -name prime256v1 -genkey -noout -out "$KEY_FILE"
-  openssl req -new -x509 -sha256 -days 825     -key "$KEY_FILE"     -out "$CERT_FILE"     -subj "/CN=Chameleon Transport"
+  openssl req -new -x509 -sha256 -days 825     -key "$KEY_FILE"     -out "$CERT_FILE"     -subj "/CN=localhost"
   chown root:chameleon "$CERT_FILE" "$KEY_FILE"
   chmod 0640 "$CERT_FILE" "$KEY_FILE"
 }
