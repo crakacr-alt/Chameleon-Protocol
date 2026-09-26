@@ -2,6 +2,51 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.0.0] - 2026-09-26
+
+### Added
+
+- единая пользовательская команда `chameleon`;
+- `chameleon import` для профиля, который создаёт серверный installer;
+- стабильный JSON config schema v1 с явным migration contract;
+- режимы `smart` и `proxy`;
+- единый client runtime поверх существующих adaptive planner, SOCKS5, QUIC/TLS/TCP и DPI engine;
+- TCP bypass rules для exact host, domain suffix и IPv4/IPv6 CIDR;
+- `chameleon doctor` с authenticated QUIC/TLS/TCP checks;
+- `chameleon doctor --json` как безопасный диагностический экспорт без PSK;
+- `chameleon show` с обязательным PSK redaction;
+- `chameleon status` для локального SOCKS listener;
+- Linux systemd client installer и hardened service;
+- Windows PowerShell service installer;
+- Windows amd64 cross-build в CI;
+- PowerShell installer syntax validation в CI;
+- документация `docs/client.md`.
+
+### Changed
+
+- пользовательский client entry point больше не требует вручную собирать десятки proxy flags;
+- Smart mode сохраняет direct-first adaptive behavior;
+- Proxy mode исключает direct TCP carrier из candidate set;
+- proxy-mode UDP `auto` использует QUIC, если он настроен;
+- config loader отказывается угадывать формат будущей неизвестной schema version.
+
+### Tests
+
+- profile import;
+- config save/load и file-permission regression;
+- future schema rejection;
+- bypass matching;
+- unified runtime Smart SOCKS5 end-to-end echo;
+- Windows client cross-build;
+- existing QUIC/TLS/TCP/UDP/race tests продолжают выполняться под race detector.
+
+### Compatibility
+
+- config schema v1 становится стабильным пользовательским контрактом;
+- wire transport остаётся совместимым с 0.9.x server data paths;
+- уже открытые application streams не обещают transparent migration при смене Wi-Fi/LTE — новые соединения используют новый network context;
+- старые исследовательские CLI остаются в репозитории, но normal user flow теперь идёт через `chameleon`.
+
 ## [0.9.2] - 2026-09-26
 
 ### Added
