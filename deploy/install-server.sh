@@ -243,6 +243,7 @@ write_environment() {
   cat >"$ENV_FILE" <<EOF
 CHAMELEON_TUNNEL_PSK=$psk
 CHAMELEON_LISTEN=:$port
+CHAMELEON_QUIC_LISTEN=:$port
 CHAMELEON_TLS_CERT=$CERT_FILE
 CHAMELEON_TLS_KEY=$KEY_FILE
 CHAMELEON_DECOY_FILE=$DECOY_FILE
@@ -272,15 +273,17 @@ open_firewall() {
   fi
 
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
-    ufw allow "$port/tcp" comment 'Chameleon tunnel' >/dev/null
-    log "allowed TCP/$port in UFW"
+    ufw allow "$port/tcp" comment 'Chameleon TLS tunnel' >/dev/null
+    ufw allow "$port/udp" comment 'Chameleon QUIC tunnel' >/dev/null
+    log "allowed TCP/$port and UDP/$port in UFW"
     return
   fi
 
   if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
     firewall-cmd --permanent --add-port="$port/tcp" >/dev/null
+    firewall-cmd --permanent --add-port="$port/udp" >/dev/null
     firewall-cmd --reload >/dev/null
-    log "allowed TCP/$port in firewalld"
+    log "allowed TCP/$port and UDP/$port in firewalld"
   fi
 }
 
@@ -306,12 +309,14 @@ write_client_profile() {
   umask 077
   cat >"$CLIENT_FILE" <<EOF
 CHAMELEON_SERVER=$host:$port
+CHAMELEON_QUIC_SERVER=$host:$port
+CHAMELEON_TLS_SERVER=$host:$port
 CHAMELEON_TUNNEL_PSK=$psk
 CHAMELEON_TLS_FINGERPRINT=$fingerprint
 
 Linux local proxy example:
   export CHAMELEON_TUNNEL_PSK='$psk'
-  chameleon-proxy --chameleon-tls='$host:$port' --tls-fingerprint='$fingerprint'
+  chameleon-proxy --chameleon-quic='$host:$port' --chameleon-tls='$host:$port' --tls-fingerprint='$fingerprint'
 EOF
   chmod 0600 "$CLIENT_FILE"
 }
@@ -328,6 +333,11 @@ verify_service() {
   if ! curl -kfsS --connect-timeout 4 --max-time 6     "https://127.0.0.1:$port/" >/dev/null; then
     journalctl -u chameleon-tunnel.service -n 50 --no-pager || true
     die "local TLS health check failed"
+  fi
+
+  if ! ss -H -lun "sport = :$port" 2>/dev/null | grep -q .; then
+    journalctl -u chameleon-tunnel.service -n 50 --no-pager || true
+    die "QUIC UDP listener is not active on port $port"
   fi
 }
 
