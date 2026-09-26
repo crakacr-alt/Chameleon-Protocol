@@ -64,3 +64,21 @@ func WithTLS(candidates []Candidate, endpoint string) []Candidate {
 		SupportsUDP: false,
 	})
 }
+
+
+// WithQUIC appends the real UDP/QUIC Chameleon carrier.
+// QUIC can carry reliable TCP-style proxy streams today and is marked UDP
+// capable for the datagram executor introduced by the 0.9 line.
+func WithQUIC(candidates []Candidate, endpoint string) []Candidate {
+	if endpoint == "" {
+		return candidates
+	}
+	return append(candidates, Candidate{
+		Name:        "chameleon-quic",
+		Kind:        KindChameleonQUIC,
+		Endpoint:    endpoint,
+		Cost:        0.30,
+		SupportsTCP: true,
+		SupportsUDP: true,
+	})
+}
