@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -146,7 +147,8 @@ func (s *Server) handleUDPAssociate(ctx context.Context, control net.Conn) error
 	_ = association.Close()
 
 	sessionErr := firstErr
-	if errors.Is(firstErr, net.ErrClosed) ||
+	if errors.Is(firstErr, io.EOF) ||
+		errors.Is(firstErr, net.ErrClosed) ||
 		errors.Is(firstErr, context.Canceled) ||
 		errors.Is(firstErr, context.DeadlineExceeded) {
 		sessionErr = nil
