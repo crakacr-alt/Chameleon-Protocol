@@ -83,20 +83,27 @@ prepare_source() {
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   source_dir="$(cd "$script_dir/.." && pwd)"
 
-  if [ -f "$source_dir/go.mod" ] && [ "${CHAMELEON_FORCE_GIT:-0}" != "1" ]; then
-    log "building from current source: $source_dir"
+  # Normal installs always use a managed checkout. This makes
+  # "chameleonctl update" deterministic and keeps runtime config outside git.
+  # Offline/dev installs may explicitly build the current copied source.
+  if [ "${CHAMELEON_USE_CURRENT_SOURCE:-0}" = "1" ]; then
+    [ -f "$source_dir/go.mod" ] || die "current source does not contain go.mod"
+    log "building from explicitly selected current source: $source_dir"
     printf '%s' "$source_dir"
     return
   fi
 
   mkdir -p "$(dirname "$REPO_DIR")"
   if [ ! -d "$REPO_DIR/.git" ]; then
-    log "cloning repository"
+    [ ! -e "$REPO_DIR" ] || die "$REPO_DIR exists but is not a git checkout"
+    log "cloning managed repository to $REPO_DIR"
     git clone --depth=1 --branch=main "$REPO_URL" "$REPO_DIR"
   else
-    log "updating managed source"
+    log "updating managed source in $REPO_DIR"
     git -C "$REPO_DIR" fetch --depth=1 origin main
     git -C "$REPO_DIR" checkout -B main origin/main
+    git -C "$REPO_DIR" reset --hard origin/main
+    git -C "$REPO_DIR" clean -fd
   fi
   printf '%s' "$REPO_DIR"
 }
