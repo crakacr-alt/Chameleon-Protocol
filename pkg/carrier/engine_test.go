@@ -112,7 +112,6 @@ func TestTLSCarrierPreferredOverRawTCPAfterDirectFailure(t *testing.T) {
 	}
 }
 
-
 func TestStaleFailureDecaysBackTowardCheapDirect(t *testing.T) {
 	e, err := NewEngine("")
 	if err != nil {
