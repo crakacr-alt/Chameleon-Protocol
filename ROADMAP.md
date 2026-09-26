@@ -24,6 +24,8 @@ Roadmap описывает направление, а не обещание сч
 - better automatic failure classification.
 
 ## 1.0.0 — First user release
+
+Status: implemented in release/v1.0.0; release requires green CI.
 - one unified client command;
 - config/profile import;
 - Smart / Proxy modes;
