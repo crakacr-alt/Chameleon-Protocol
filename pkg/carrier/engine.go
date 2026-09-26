@@ -16,12 +16,12 @@ import (
 type Kind string
 
 const (
-	KindDirect       Kind = "direct"
+	KindDirect        Kind = "direct"
 	KindChameleonUDP  Kind = "chameleon-udp"
 	KindChameleonQUIC Kind = "chameleon-quic"
 	KindChameleonTCP  Kind = "chameleon-tcp"
-	KindChameleonTLS Kind = "chameleon-tls"
-	KindRelay        Kind = "relay"
+	KindChameleonTLS  Kind = "chameleon-tls"
+	KindRelay         Kind = "relay"
 )
 
 // Candidate is one route the planner may try.
@@ -56,12 +56,12 @@ type Observation struct {
 
 // Stats is the compact long-term memory for one carrier.
 type Stats struct {
-	Attempts      uint64        `json:"attempts"`
-	Successes     uint64        `json:"successes"`
-	Failures      uint64        `json:"failures"`
-	FailureStreak uint64        `json:"failure_streak"`
-	AvgLatency    time.Duration `json:"avg_latency"`
-	AvgThroughput float64       `json:"avg_throughput"`
+	Attempts        uint64        `json:"attempts"`
+	Successes       uint64        `json:"successes"`
+	Failures        uint64        `json:"failures"`
+	FailureStreak   uint64        `json:"failure_streak"`
+	AvgLatency      time.Duration `json:"avg_latency"`
+	AvgThroughput   float64       `json:"avg_throughput"`
 	LastSuccess     time.Time     `json:"last_success,omitempty"`
 	LastFailure     time.Time     `json:"last_failure,omitempty"`
 	LastObservation time.Time     `json:"last_observation,omitempty"`
