@@ -15,14 +15,14 @@ import (
 )
 
 func main() {
-	listen := flag.String("listen", ":9443", "TCP address for Chameleon tunnel")
+	listen := flag.String("listen", firstNonEmpty(os.Getenv("CHAMELEON_LISTEN"), ":9443"), "TCP address for Chameleon tunnel")
 	psk := flag.String("psk", "", "required pre-shared key for tunnel authentication")
 	handshakeTimeout := flag.Duration("handshake-timeout", 8*time.Second, "client handshake timeout")
 	dialTimeout := flag.Duration("dial-timeout", 8*time.Second, "destination dial timeout")
 	allowPrivate := flag.Bool("allow-private", false, "allow tunnel egress to private/loopback server networks")
 	tlsCert := flag.String("tls-cert", "", "optional PEM certificate path; enables TLS front")
 	tlsKey := flag.String("tls-key", "", "optional PEM private-key path; enables TLS front")
-	decoyFile := flag.String("decoy-file", "", "optional HTML file returned to ordinary HTTPS GET probes")
+	decoyFile := flag.String("decoy-file", os.Getenv("CHAMELEON_DECOY_FILE"), "optional HTML file returned to ordinary HTTPS GET probes")
 	flag.Parse()
 
 	tunnelPSK := *psk
