@@ -62,8 +62,9 @@ type Stats struct {
 	FailureStreak uint64        `json:"failure_streak"`
 	AvgLatency    time.Duration `json:"avg_latency"`
 	AvgThroughput float64       `json:"avg_throughput"`
-	LastSuccess   time.Time     `json:"last_success,omitempty"`
-	LastFailure   time.Time     `json:"last_failure,omitempty"`
+	LastSuccess     time.Time     `json:"last_success,omitempty"`
+	LastFailure     time.Time     `json:"last_failure,omitempty"`
+	LastObservation time.Time     `json:"last_observation,omitempty"`
 }
 
 // Decision is the selected route and an explanation for diagnostics.
@@ -146,6 +147,7 @@ func (e *Engine) Observe(obs Observation) error {
 		stats.FailureStreak++
 		stats.LastFailure = obs.At
 	}
+	stats.LastObservation = obs.At
 	stats.AvgLatency = runningDuration(stats.AvgLatency, obs.Latency, stats.Attempts)
 	stats.AvgThroughput = runningFloat(stats.AvgThroughput, obs.Throughput, stats.Attempts)
 
@@ -175,7 +177,7 @@ func (e *Engine) Choose(ctx Context, candidates []Candidate) (Decision, error) {
 	ranking := make([]ranked, 0, len(compatible))
 	for _, candidate := range compatible {
 		stats := statsByCarrier[candidate.Name]
-		score, known := carrierScore(ctx.TrafficClass, candidate, stats)
+		score, known := carrierScore(ctx.TrafficClass, candidate, stats, time.Now())
 		ranking = append(ranking, ranked{candidate: candidate, score: score, known: known})
 	}
 	sort.SliceStable(ranking, func(i, j int) bool {
@@ -210,6 +212,25 @@ func (e *Engine) Choose(ctx Context, candidates []Candidate) (Decision, error) {
 }
 
 // Snapshot returns a copy for status output and tests.
+// HasEvidence reports whether any supplied carrier has observations in this exact
+// context. Callers use it to decide when a small connection race is worth the
+// extra work on a previously unknown network path.
+func (e *Engine) HasEvidence(ctx Context, candidates []Candidate) bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	statsByCarrier := e.Entries[contextKey(ctx)]
+	for _, candidate := range candidates {
+		if stats := statsByCarrier[candidate.Name]; stats != nil && stats.Attempts > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) Snapshot(ctx Context) map[string]Stats {
 	if e == nil {
 		return nil
@@ -277,32 +298,60 @@ func filterCompatible(protocol string, candidates []Candidate) []Candidate {
 	return out
 }
 
-func carrierScore(trafficClass string, candidate Candidate, stats *Stats) (float64, bool) {
+func carrierScore(trafficClass string, candidate Candidate, stats *Stats, now time.Time) (float64, bool) {
+	baseline := 0.25 - candidate.Cost
 	if stats == nil || stats.Attempts == 0 {
-		return 0.25 - candidate.Cost, false
+		return baseline, false
 	}
 
 	successRate := float64(stats.Successes) / float64(stats.Attempts)
-	score := successRate*7.0 - float64(stats.FailureStreak)*1.8 - candidate.Cost
+	learned := successRate*7.0 - float64(stats.FailureStreak)*1.8 - candidate.Cost
 
 	latencyPenalty := math.Min(float64(stats.AvgLatency)/float64(time.Second), 2.5)
 	throughputBoost := math.Min(stats.AvgThroughput/(8*1024*1024), 2.0)
 
 	switch strings.ToLower(trafficClass) {
 	case "interactive", "realtime":
-		score -= latencyPenalty * 2.2
-		score += throughputBoost * 0.25
+		learned -= latencyPenalty * 2.2
+		learned += throughputBoost * 0.25
 	case "streaming":
-		score -= latencyPenalty * 0.7
-		score += throughputBoost * 1.5
+		learned -= latencyPenalty * 0.7
+		learned += throughputBoost * 1.5
 	case "bulk":
-		score -= latencyPenalty * 0.3
-		score += throughputBoost * 2.0
+		learned -= latencyPenalty * 0.3
+		learned += throughputBoost * 2.0
 	default:
-		score -= latencyPenalty
-		score += throughputBoost
+		learned -= latencyPenalty
+		learned += throughputBoost
 	}
-	return score, true
+
+	freshness := evidenceFreshness(stats, now)
+	return baseline + freshness*(learned-baseline), true
+}
+
+func evidenceFreshness(stats *Stats, now time.Time) float64 {
+	if stats == nil {
+		return 0
+	}
+	last := stats.LastObservation
+	if last.IsZero() {
+		if stats.LastSuccess.After(stats.LastFailure) {
+			last = stats.LastSuccess
+		} else {
+			last = stats.LastFailure
+		}
+	}
+	if last.IsZero() || now.IsZero() {
+		return 1
+	}
+	age := now.Sub(last)
+	if age <= 0 {
+		return 1
+	}
+
+	// One day is a deliberate half-life: network filtering can change quickly.
+	const halfLife = 24 * time.Hour
+	return math.Exp(-math.Ln2 * float64(age) / float64(halfLife))
 }
 
 func runningDuration(current, next time.Duration, count uint64) time.Duration {
