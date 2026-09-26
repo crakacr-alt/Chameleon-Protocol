@@ -26,6 +26,14 @@ GOFLAGS='' go build -o "$REPO_DIR/chameleon-tunnel-server" ./cmd/tunnel-server
 install -d -m 0700 "$ENV_DIR"
 umask 077
 printf 'CHAMELEON_TUNNEL_PSK=%s\n' "$CHAMELEON_TUNNEL_PSK" > "$ENV_FILE"
+if [ -n "${CHAMELEON_TLS_CERT:-}" ] || [ -n "${CHAMELEON_TLS_KEY:-}" ]; then
+  if [ -z "${CHAMELEON_TLS_CERT:-}" ] || [ -z "${CHAMELEON_TLS_KEY:-}" ]; then
+    echo "Both CHAMELEON_TLS_CERT and CHAMELEON_TLS_KEY are required for TLS mode." >&2
+    exit 2
+  fi
+  printf 'CHAMELEON_TLS_CERT=%s\n' "$CHAMELEON_TLS_CERT" >> "$ENV_FILE"
+  printf 'CHAMELEON_TLS_KEY=%s\n' "$CHAMELEON_TLS_KEY" >> "$ENV_FILE"
+fi
 chmod 0600 "$ENV_FILE"
 
 install -m 0644 "$REPO_DIR/deploy/chameleon-tunnel.service" "$SERVICE_DEST"

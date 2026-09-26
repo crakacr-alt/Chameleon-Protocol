@@ -33,6 +33,7 @@ type AdaptiveDialer struct {
 	PSK           string
 	Purpose       string
 	Timeout       time.Duration
+	TLSConfig     tunnel.TLSClientConfig
 
 	// DirectCooldown is how long direct is temporarily skipped after every
 	// available userspace DPI strategy recently failed for the same destination.
@@ -214,6 +215,22 @@ func (a *AdaptiveDialer) dialPlan(
 			return nil, err
 		}
 		return dpi.NewFirstWriteConn(conn, strategy), nil
+
+	case carrier.KindChameleonTLS:
+		endpoint := plan.Carrier.Carrier.Endpoint
+		if endpoint == "" {
+			return nil, fmt.Errorf("chameleon TLS carrier has no endpoint")
+		}
+		return tunnel.DialTLSContextWithDialer(ctx, endpoint, destination, a.PSK, timeout, a.TLSConfig,
+			func(ctx context.Context, address string) (net.Conn, error) {
+				conn, err := directDial(ctx, address)
+				if err != nil {
+					return nil, err
+				}
+				// This wrapper sits below crypto/tls, so its first write is the
+				// actual TLS ClientHello visible to the local network.
+				return dpi.NewFirstWriteConn(conn, strategy), nil
+			})
 
 	case carrier.KindChameleonTCP:
 		endpoint := plan.Carrier.Carrier.Endpoint

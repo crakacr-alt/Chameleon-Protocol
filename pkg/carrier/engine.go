@@ -19,6 +19,7 @@ const (
 	KindDirect       Kind = "direct"
 	KindChameleonUDP Kind = "chameleon-udp"
 	KindChameleonTCP Kind = "chameleon-tcp"
+	KindChameleonTLS Kind = "chameleon-tls"
 	KindRelay        Kind = "relay"
 )
 
