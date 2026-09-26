@@ -29,11 +29,11 @@ func TestNewRejectsInvalidConfig(t *testing.T) {
 func TestMatchBypass(t *testing.T) {
 	rules := []string{"localhost", "10.0.0.0/8", ".lan.example"}
 	cases := map[string]bool{
-		"127.0.0.1:80":        true,
-		"10.2.3.4:443":         true,
+		"127.0.0.1:80":          true,
+		"10.2.3.4:443":          true,
 		"router.lan.example:80": true,
-		"lan.example:80":       true,
-		"example.com:443":      false,
+		"lan.example:80":        true,
+		"example.com:443":       false,
 	}
 	for destination, want := range cases {
 		if got := MatchBypass(destination, rules); got != want {
