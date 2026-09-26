@@ -218,7 +218,6 @@ func (p *Planner) Observe(result Result) error {
 	return nil
 }
 
-
 func directOnlyDPI(strategies []dpi.Strategy) []dpi.Strategy {
 	for _, strategy := range strategies {
 		if strategy.Name == "direct" {
