@@ -190,3 +190,29 @@ func TestQUICPreferredBeforeTLSAfterDirectFailure(t *testing.T) {
 		t.Fatalf("want QUIC fallback before TLS, got %q", decision.Carrier.Name)
 	}
 }
+
+func TestCarrierTracksLatencyJitter(t *testing.T) {
+	e, err := NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := Context{NetworkID: "wifi", Destination: "game.example:443", TrafficClass: "realtime", Protocol: "tcp"}
+	for _, latency := range []time.Duration{20 * time.Millisecond, 50 * time.Millisecond} {
+		if err := e.Observe(Observation{
+			Context: ctx,
+			Carrier: "direct",
+			Success: true,
+			Latency: latency,
+			At:      time.Now(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats := e.Snapshot(ctx)["direct"]
+	if stats.LastLatency != 50*time.Millisecond {
+		t.Fatalf("unexpected last latency %s", stats.LastLatency)
+	}
+	if stats.AvgJitter <= 0 {
+		t.Fatalf("expected non-zero jitter, got %s", stats.AvgJitter)
+	}
+}

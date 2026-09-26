@@ -61,6 +61,8 @@ type Stats struct {
 	Failures        uint64        `json:"failures"`
 	FailureStreak   uint64        `json:"failure_streak"`
 	AvgLatency      time.Duration `json:"avg_latency"`
+	AvgJitter       time.Duration `json:"avg_jitter"`
+	LastLatency     time.Duration `json:"last_latency,omitempty"`
 	AvgThroughput   float64       `json:"avg_throughput"`
 	LastSuccess     time.Time     `json:"last_success,omitempty"`
 	LastFailure     time.Time     `json:"last_failure,omitempty"`
@@ -148,8 +150,20 @@ func (e *Engine) Observe(obs Observation) error {
 		stats.LastFailure = obs.At
 	}
 	stats.LastObservation = obs.At
-	stats.AvgLatency = runningDuration(stats.AvgLatency, obs.Latency, stats.Attempts)
-	stats.AvgThroughput = runningFloat(stats.AvgThroughput, obs.Throughput, stats.Attempts)
+	if obs.Latency > 0 {
+		if stats.LastLatency > 0 {
+			jitter := obs.Latency - stats.LastLatency
+			if jitter < 0 {
+				jitter = -jitter
+			}
+			stats.AvgJitter = runningDuration(stats.AvgJitter, jitter, stats.Attempts)
+		}
+		stats.LastLatency = obs.Latency
+		stats.AvgLatency = runningDuration(stats.AvgLatency, obs.Latency, stats.Attempts)
+	}
+	if obs.Throughput > 0 {
+		stats.AvgThroughput = runningFloat(stats.AvgThroughput, obs.Throughput, stats.Attempts)
+	}
 
 	return e.saveLocked()
 }
@@ -308,14 +322,17 @@ func carrierScore(trafficClass string, candidate Candidate, stats *Stats, now ti
 	learned := successRate*7.0 - float64(stats.FailureStreak)*1.8 - candidate.Cost
 
 	latencyPenalty := math.Min(float64(stats.AvgLatency)/float64(time.Second), 2.5)
+	jitterPenalty := math.Min(float64(stats.AvgJitter)/float64(time.Second), 1.5)
 	throughputBoost := math.Min(stats.AvgThroughput/(8*1024*1024), 2.0)
 
 	switch strings.ToLower(trafficClass) {
 	case "interactive", "realtime":
 		learned -= latencyPenalty * 2.2
+		learned -= jitterPenalty * 1.7
 		learned += throughputBoost * 0.25
 	case "streaming":
 		learned -= latencyPenalty * 0.7
+		learned -= jitterPenalty * 0.4
 		learned += throughputBoost * 1.5
 	case "bulk":
 		learned -= latencyPenalty * 0.3

@@ -101,6 +101,15 @@ func (s *Server) HandleConn(ctx context.Context, conn net.Conn) error {
 	}
 	secure := newSecureConn(conn, cipher)
 
+	// An authenticated probe proves the real Chameleon first hop without
+	// opening any Internet destination on the server.
+	if hello.Destination == probeSessionDestination {
+		if _, err := secure.Write([]byte{0}); err != nil {
+			return fmt.Errorf("send probe status: %w", err)
+		}
+		return nil
+	}
+
 	if !s.cfg.AllowPrivateDestinations {
 		if err := rejectPrivateDestinationLiteral(hello.Destination); err != nil {
 			message := append([]byte{1}, []byte("destination is not allowed")...)
