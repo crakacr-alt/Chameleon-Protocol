@@ -92,12 +92,12 @@ func TestTLSCarrierPreferredOverRawTCPAfterDirectFailure(t *testing.T) {
 	}
 	ctx := Context{NetworkID: "mobile", Destination: "example.com:443", TrafficClass: "web", Protocol: "tcp"}
 	if err := e.Observe(Observation{
-		Context:  ctx,
-		Carrier:  "direct",
-		Success:  false,
-		Latency:  time.Second,
-		Failure:  "blocked",
-		At:       time.Now(),
+		Context: ctx,
+		Carrier: "direct",
+		Success: false,
+		Latency: time.Second,
+		Failure: "blocked",
+		At:      time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
