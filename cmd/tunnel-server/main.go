@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
+	buildversion "github.com/crakacr-alt/Chameleon-Protocol/pkg/version"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "print Chameleon version and exit")
 	listen := flag.String("listen", firstNonEmpty(os.Getenv("CHAMELEON_LISTEN"), ":9443"), "TCP address for Chameleon tunnel")
 	quicListen := flag.String("quic-listen", os.Getenv("CHAMELEON_QUIC_LISTEN"), "optional UDP address for QUIC carrier")
 	psk := flag.String("psk", "", "required pre-shared key for tunnel authentication")
@@ -25,6 +27,11 @@ func main() {
 	tlsKey := flag.String("tls-key", "", "optional PEM private-key path; enables TLS front")
 	decoyFile := flag.String("decoy-file", os.Getenv("CHAMELEON_DECOY_FILE"), "optional HTML file returned to ordinary HTTPS GET probes")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(buildversion.Current)
+		return
+	}
 
 	tunnelPSK := firstNonEmpty(*psk, os.Getenv("CHAMELEON_TUNNEL_PSK"))
 	if tunnelPSK == "" {
