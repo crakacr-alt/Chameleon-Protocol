@@ -29,6 +29,10 @@ jobs:
             exit 1
           fi
 
+      - name: Check deploy scripts
+        shell: bash
+        run: bash -n deploy/*.sh deploy/chameleonctl
+
       - name: Vet
         run: go vet ./...
 
