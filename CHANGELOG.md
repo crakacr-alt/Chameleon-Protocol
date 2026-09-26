@@ -2,6 +2,37 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.9.2] - 2026-09-26
+
+### Added
+
+- authenticated first-hop probes for raw TCP, TLS and QUIC carriers;
+- `cmd/probe` with human-readable and JSON output;
+- repeated samples with latency, jitter and loss summary;
+- IPv4/IPv6 endpoint resolution and Happy-Eyeballs-style TCP racing;
+- carrier memory now tracks observed jitter in addition to latency/throughput;
+- dedicated probe destination handled inside the Chameleon server without opening Internet egress.
+
+### Changed
+
+- realtime/interactive carrier scoring now includes measured jitter penalty;
+- network diagnostics prove the Chameleon PSK handshake instead of treating an open port as healthy;
+- stale carrier evidence continues to decay, while new probe measurements refresh route knowledge.
+
+### Tests
+
+- address candidate resolution for IPv4/IPv6;
+- Happy-Eyeballs winner selection;
+- probe metrics and jitter calculation;
+- authenticated probe path;
+- jitter-aware carrier scoring regression tests.
+
+### Notes
+
+- probes are intentionally first-hop measurements; they do not claim that every final website is reachable;
+- active probes complement real-session learning instead of replacing it;
+- 1.0 consumes this diagnostics foundation for the unified client and doctor workflow.
+
 ## [0.9.1] - 2026-09-26
 
 ### Added
