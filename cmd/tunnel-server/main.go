@@ -126,6 +126,7 @@ func main() {
 			server,
 			tunnel.QUICConfig{
 				HandshakeTimeout: *handshakeTimeout,
+				EnableDatagrams:  true,
 			},
 		)
 		if err != nil {

@@ -28,6 +28,7 @@ func main() {
 	chameleonTCP := flag.String("chameleon-tcp", "", "optional raw Chameleon TCP tunnel endpoint")
 	chameleonTLS := flag.String("chameleon-tls", "", "optional TLS-fronted Chameleon tunnel endpoint")
 	chameleonQUIC := flag.String("chameleon-quic", "", "optional UDP/QUIC Chameleon tunnel endpoint")
+	udpMode := flag.String("udp-mode", "auto", "SOCKS5 UDP mode: auto, direct or quic")
 	tlsServerName := flag.String("tls-server-name", "", "TLS server name/SNI for --chameleon-tls")
 	tlsInsecure := flag.Bool("tls-insecure", false, "skip normal TLS certificate verification (not recommended)")
 	tlsFingerprint := flag.String("tls-fingerprint", "", "optional pinned TLS certificate SHA-256 fingerprint")
@@ -102,8 +103,34 @@ func main() {
 		Network:                  networkctx.Detect,
 	}
 
+	tlsCfg := tunnel.TLSClientConfig{
+		ServerName:         *tlsServerName,
+		InsecureSkipVerify: *tlsInsecure,
+		PinnedSHA256:       *tlsFingerprint,
+	}
+
+	openUDP := func(ctx context.Context) (socks5.UDPAssociation, error) {
+		switch strings.ToLower(strings.TrimSpace(*udpMode)) {
+		case "direct":
+			return socks5.NewDirectUDPAssociation(ctx, *timeout), nil
+		case "quic":
+			if *chameleonQUIC == "" {
+				return nil, fmt.Errorf("--udp-mode=quic requires --chameleon-quic")
+			}
+			return tunnel.DialQUICDatagramSession(ctx, *chameleonQUIC, tunnelPSK, *timeout, tlsCfg)
+		case "auto":
+			if *chameleonQUIC != "" {
+				return tunnel.DialQUICDatagramSession(ctx, *chameleonQUIC, tunnelPSK, *timeout, tlsCfg)
+			}
+			return socks5.NewDirectUDPAssociation(ctx, *timeout), nil
+		default:
+			return nil, fmt.Errorf("unknown --udp-mode %q", *udpMode)
+		}
+	}
+
 	server := &socks5.Server{
-		Dial: dialer.DialContext,
+		Dial:    dialer.DialContext,
+		OpenUDP: openUDP,
 		OnSession: func(result socks5.SessionResult) {
 			if result.Err != nil {
 				fmt.Printf("session %s ended: up=%d down=%d duration=%s err=%v\n",

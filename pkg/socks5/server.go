@@ -28,13 +28,14 @@ type SessionResult struct {
 // binds to localhost; callers exposing it remotely must add an outer access layer.
 type Server struct {
 	Dial      DialContextFunc
+	OpenUDP   OpenUDPFunc
 	OnSession func(SessionResult)
 }
 
 // Serve accepts SOCKS clients until listener.Close or context cancellation.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
-	if s == nil || s.Dial == nil {
-		return fmt.Errorf("SOCKS5 dial function is required")
+	if s == nil || (s.Dial == nil && s.OpenUDP == nil) {
+		return fmt.Errorf("SOCKS5 requires at least one outbound transport")
 	}
 	if listener == nil {
 		return fmt.Errorf("listener is nil")
@@ -62,10 +63,22 @@ func (s *Server) handle(ctx context.Context, client net.Conn) error {
 	if err := serverGreeting(client); err != nil {
 		return err
 	}
-	destination, err := readRequest(client)
+	command, destination, err := readRequestDetails(client)
 	if err != nil {
 		_ = writeReply(client, 0x01, nil)
 		return err
+	}
+
+	if command == 0x03 {
+		return s.handleUDPAssociate(ctx, client)
+	}
+	if command != 0x01 {
+		_ = writeReply(client, 0x07, nil)
+		return fmt.Errorf("unsupported SOCKS5 command %d", command)
+	}
+	if s.Dial == nil {
+		_ = writeReply(client, 0x07, nil)
+		return fmt.Errorf("SOCKS5 CONNECT is not configured")
 	}
 
 	started := time.Now()
@@ -158,24 +171,35 @@ func serverGreeting(conn net.Conn) error {
 }
 
 func readRequest(conn net.Conn) (string, error) {
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(conn, header); err != nil {
+	command, destination, err := readRequestDetails(conn)
+	if err != nil {
 		return "", err
 	}
-	if header[0] != 0x05 || header[1] != 0x01 {
-		return "", fmt.Errorf("only SOCKS5 CONNECT is supported")
+	if command != 0x01 {
+		return "", fmt.Errorf("SOCKS5 command is not CONNECT")
+	}
+	return destination, nil
+}
+
+func readRequestDetails(conn net.Conn) (byte, string, error) {
+	header := make([]byte, 4)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return 0, "", err
+	}
+	if header[0] != 0x05 || header[2] != 0x00 {
+		return 0, "", fmt.Errorf("invalid SOCKS5 request header")
 	}
 
 	host, err := readAddress(conn, header[3])
 	if err != nil {
-		return "", err
+		return 0, "", err
 	}
 	var portBytes [2]byte
 	if _, err := io.ReadFull(conn, portBytes[:]); err != nil {
-		return "", err
+		return 0, "", err
 	}
 	port := binary.BigEndian.Uint16(portBytes[:])
-	return net.JoinHostPort(host, strconv.Itoa(int(port))), nil
+	return header[1], net.JoinHostPort(host, strconv.Itoa(int(port))), nil
 }
 
 func readAddress(r io.Reader, atyp byte) (string, error) {
@@ -214,9 +238,13 @@ func writeReply(conn net.Conn, code byte, addr net.Addr) error {
 	ip := net.IPv4zero
 	port := 0
 
-	if tcpAddr, ok := addr.(*net.TCPAddr); ok {
-		ip = tcpAddr.IP
-		port = tcpAddr.Port
+	switch value := addr.(type) {
+	case *net.TCPAddr:
+		ip = value.IP
+		port = value.Port
+	case *net.UDPAddr:
+		ip = value.IP
+		port = value.Port
 	}
 	ip4 := ip.To4()
 	if ip4 == nil {
