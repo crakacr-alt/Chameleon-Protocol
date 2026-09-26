@@ -76,10 +76,10 @@ func main() {
 	)
 
 	dialer := &adaptiveproxy.AdaptiveDialer{
-		Planner:                  p,
-		Carriers:                 carriers,
-		DPIStrategies:            dpi.DefaultStrategies(),
-		PSK:                      tunnelPSK,
+		Planner:       p,
+		Carriers:      carriers,
+		DPIStrategies: dpi.DefaultStrategies(),
+		PSK:           tunnelPSK,
 		TLSConfig: tunnel.TLSClientConfig{
 			ServerName:         *tlsServerName,
 			InsecureSkipVerify: *tlsInsecure,
