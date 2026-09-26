@@ -2,6 +2,40 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.1.0] - 2026-09-26
+
+### Added
+
+- localhost control API integrated into the normal client runtime;
+- built-in desktop web panel on `127.0.0.1:8765`;
+- user presets `auto`, `fast`, `stable`, `gaming` and `streaming`;
+- real carrier score policy multipliers for latency, jitter, throughput and route cost;
+- live preset changes without deleting learned route evidence or restarting the client;
+- preset persistence in the stable v1 config schema;
+- non-secret status API for network, SOCKS listener and configured carriers;
+- `docs/desktop.md`.
+
+### Security
+
+- control API refuses non-loopback bind addresses;
+- requests from non-loopback peers are rejected;
+- control status never serializes the tunnel PSK;
+- preset mutation request bodies are size-limited.
+
+### Tests
+
+- preset validation;
+- gaming-vs-streaming route-choice regression proving presets alter real selection;
+- live runtime preset persistence;
+- status API secret-leak regression;
+- remote control bind/client rejection.
+
+### Compatibility
+
+- config schema remains v1 because `preset` is optional and defaults to `auto`;
+- 1.0 configs load unchanged;
+- network routing continues to use the same adaptive engine used by the CLI.
+
 ## [1.0.0] - 2026-09-26
 
 ### Added
