@@ -16,7 +16,7 @@ BIN_SERVER="/usr/local/bin/chameleon-tunnel-server"
 BIN_PROXY="/usr/local/bin/chameleon-proxy"
 BIN_CTL="/usr/local/bin/chameleonctl"
 LIB_DIR="/usr/local/lib/chameleon"
-GO_VERSION="${CHAMELEON_GO_VERSION:-1.25.0}"
+GO_VERSION="${CHAMELEON_GO_VERSION:-1.27.1}"
 
 log() {
   printf '[chameleon] %s\n' "$*" >&2
@@ -56,7 +56,7 @@ ensure_go() {
     current="$(go env GOVERSION 2>/dev/null | sed 's/^go//')"
   fi
 
-  if [ -n "$current" ] && version_ge "$current" "1.25.0"; then
+  if [ -n "$current" ] && version_ge "$current" "1.27.0"; then
     log "using Go $current"
     return
   fi
