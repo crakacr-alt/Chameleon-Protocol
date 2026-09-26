@@ -26,7 +26,7 @@ import (
 
 type writeRecordingConn struct {
 	net.Conn
-	mu     sync.Mutex
+	mu      sync.Mutex
 	lengths []int
 }
 
