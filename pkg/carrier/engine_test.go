@@ -111,3 +111,83 @@ func TestTLSCarrierPreferredOverRawTCPAfterDirectFailure(t *testing.T) {
 		t.Fatalf("want TLS fallback before raw TCP, got %q", decision.Carrier.Name)
 	}
 }
+
+
+func TestStaleFailureDecaysBackTowardCheapDirect(t *testing.T) {
+	e, err := NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := Context{NetworkID: "wifi", Destination: "example.com:443", TrafficClass: "web", Protocol: "tcp"}
+	if err := e.Observe(Observation{
+		Context: ctx,
+		Carrier: "direct",
+		Success: false,
+		Latency: 2 * time.Second,
+		Failure: "old timeout",
+		At:      time.Now().Add(-14 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := WithQUIC(Defaults("", "server:9443", ""), "server:443")
+	decision, err := e.Choose(ctx, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Carrier.Name != "direct" {
+		t.Fatalf("stale evidence should decay toward direct, got %q", decision.Carrier.Name)
+	}
+}
+
+func TestHasEvidenceIsContextSpecific(t *testing.T) {
+	e, err := NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := WithQUIC(Defaults("", "", ""), "server:443")
+	known := Context{NetworkID: "wifi", Destination: "example.com:443", TrafficClass: "web", Protocol: "tcp"}
+	unknown := Context{NetworkID: "mobile", Destination: "example.com:443", TrafficClass: "web", Protocol: "tcp"}
+
+	if err := e.Observe(Observation{
+		Context: known,
+		Carrier: "direct",
+		Success: true,
+		At:      time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !e.HasEvidence(known, candidates) {
+		t.Fatal("expected evidence for known context")
+	}
+	if e.HasEvidence(unknown, candidates) {
+		t.Fatal("evidence must not leak across network contexts")
+	}
+}
+
+func TestQUICPreferredBeforeTLSAfterDirectFailure(t *testing.T) {
+	e, err := NewEngine("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := Context{NetworkID: "mobile", Destination: "example.com:443", TrafficClass: "web", Protocol: "tcp"}
+	if err := e.Observe(Observation{
+		Context: ctx,
+		Carrier: "direct",
+		Success: false,
+		Latency: time.Second,
+		Failure: "blocked",
+		At:      time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := WithQUIC(WithTLS(Defaults("", "server:9443", ""), "server:443"), "server:443")
+	decision, err := e.Choose(ctx, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Carrier.Name != "chameleon-quic" {
+		t.Fatalf("want QUIC fallback before TLS, got %q", decision.Carrier.Name)
+	}
+}
