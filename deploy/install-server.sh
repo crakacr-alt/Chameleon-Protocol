@@ -19,7 +19,7 @@ LIB_DIR="/usr/local/lib/chameleon"
 GO_VERSION="${CHAMELEON_GO_VERSION:-1.25.0}"
 
 log() {
-  printf '[chameleon] %s\n' "$*"
+  printf '[chameleon] %s\n' "$*" >&2
 }
 
 die() {
@@ -253,8 +253,9 @@ install_units() {
   install -o root -g root -m 0755     "$src/deploy/chameleonctl" "$BIN_CTL"
 
   systemctl daemon-reload
-  systemctl enable --now chameleon-tunnel.service
-  systemctl enable --now chameleon-health.timer
+  systemctl enable chameleon-tunnel.service >/dev/null
+  systemctl restart chameleon-tunnel.service
+  systemctl enable --now chameleon-health.timer >/dev/null
 }
 
 open_firewall() {
