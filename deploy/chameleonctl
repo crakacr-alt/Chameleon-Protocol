@@ -40,6 +40,17 @@ case "${1:-}" in
     systemctl restart chameleon-tunnel.service
     systemctl status chameleon-tunnel.service --no-pager
     ;;
+  update)
+    [ "$(id -u)" -eq 0 ] || {
+      echo "update requires root; run: sudo chameleonctl update" >&2
+      exit 1
+    }
+    [ -d /opt/chameleon/.git ] || {
+      echo "/opt/chameleon is not a managed git checkout; rerun deploy/install-server.sh from a repository copy" >&2
+      exit 1
+    }
+    exec env CHAMELEON_FORCE_GIT=1 /opt/chameleon/deploy/install-server.sh
+    ;;
   *)
     usage
     exit 2
