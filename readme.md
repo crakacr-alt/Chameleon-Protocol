@@ -200,6 +200,13 @@ QUIC переносит надёжные proxy streams через настоящ
 
 Подробности: [docs/quic.md](docs/quic.md)
 
+### UDP data path
+
+SOCKS5 UDP ASSOCIATE поддерживает direct UDP и QUIC DATAGRAM.
+Режим выбирается через `--udp-mode=auto|direct|quic`.
+
+Подробности: [docs/udp.md](docs/udp.md)
+
 ### pkg/experiment
 
 - Scenario: воспроизводимый benchmark поверх loopback UDP
@@ -404,7 +411,6 @@ ss -lunp | grep 9000
 - benchmark comparison matrix
 
 **Still next**
-- arbitrary UDP datagram proxy path / SOCKS5 UDP ASSOCIATE (0.9.1)
 - session resume across carrier switches
 - fingerprint UX и optional configured trust anchors поверх TOFU
 - full epoch key rekey state machine, интегрированный в data path
