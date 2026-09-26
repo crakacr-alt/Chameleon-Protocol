@@ -24,6 +24,7 @@ Chameleon Protocol — исследовательский адаптивный t
 - authenticated TCP/TLS/QUIC first-hop probes с latency/jitter/loss
 - IPv4/IPv6 Happy-Eyeballs-style racing для диагностики сетевого пути
 - единый Chameleon 1.0 client: import/connect/status/doctor/show
+- localhost desktop panel + live adaptive presets Auto/Fast/Stable/Gaming/Streaming
 - стабильный config schema v1 и Linux/Windows service install
 - one-command VPS installer + hardened systemd + automatic health monitor
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
@@ -340,6 +341,20 @@ sudo ./deploy/install-server.sh
 Installer автоматически включает TLS-front, systemd restart и health monitor.
 
 Подробнее: [docs/server_install.md](docs/server_install.md) и [docs/socks_tunnel.md](docs/socks_tunnel.md)
+
+### Desktop panel
+
+Начиная с 1.1 обычный `chameleon connect` одновременно поднимает локальную панель:
+
+```text
+http://127.0.0.1:8765/
+```
+
+Панель показывает текущую сеть, режим, SOCKS endpoint и carriers. Пресеты
+`Auto/Fast/Stable/Gaming/Streaming` меняют реальные веса adaptive scorer сразу,
+без перезапуска и без удаления накопленной истории.
+
+Подробнее: [docs/desktop.md](docs/desktop.md)
 
 ### Chameleon 1.0 client
 
