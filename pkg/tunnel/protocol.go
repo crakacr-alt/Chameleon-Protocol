@@ -20,6 +20,7 @@ const (
 	nonceSize              = 32
 	maxDestinationLen      = 1024
 	maxHelloCipher         = 2048
+	probeSessionDestination = "probe.session:1"
 )
 
 type clientHello struct {
