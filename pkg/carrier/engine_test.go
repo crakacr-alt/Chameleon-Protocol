@@ -85,7 +85,6 @@ func TestCarrierMemoryPersists(t *testing.T) {
 	}
 }
 
-
 func TestTLSCarrierPreferredOverRawTCPAfterDirectFailure(t *testing.T) {
 	e, err := NewEngine("")
 	if err != nil {
