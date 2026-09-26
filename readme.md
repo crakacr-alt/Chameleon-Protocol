@@ -21,6 +21,8 @@ Chameleon Protocol — исследовательский адаптивный t
 - real QUIC carrier поверх UDP с TLS 1.3 и тем же Chameleon authenticated tunnel
 - first-use adaptive race: direct стартует первым, fallback подключается только если direct не успел быстро победить
 - time decay маршрутов: старая блокировка постепенно перестаёт диктовать выбор
+- authenticated TCP/TLS/QUIC first-hop probes с latency/jitter/loss
+- IPv4/IPv6 Happy-Eyeballs-style racing для диагностики сетевого пути
 - one-command VPS installer + hardened systemd + automatic health monitor
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
 - автоматическое распознавание early EOF/RST/blackhole после успешного TCP connect
@@ -336,6 +338,23 @@ sudo ./deploy/install-server.sh
 Installer автоматически включает TLS-front, systemd restart и health monitor.
 
 Подробнее: [docs/server_install.md](docs/server_install.md) и [docs/socks_tunnel.md](docs/socks_tunnel.md)
+
+### Диагностика transport path
+
+Проверить реальные Chameleon carriers до сервера:
+
+```bash
+export CHAMELEON_TUNNEL_PSK='...'
+go run ./cmd/probe \
+  --server=SERVER:443 \
+  --tls-fingerprint=SHA256_PIN \
+  --transports=quic,tls,tcp
+```
+
+Команда выполняет authenticated first-hop handshake и показывает success/loss,
+среднюю latency и jitter. Для автоматизации доступен `--json`.
+
+Подробнее: [docs/probing.md](docs/probing.md)
 
 ### Adaptive planner
 
