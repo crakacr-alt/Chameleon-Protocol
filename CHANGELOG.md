@@ -2,6 +2,55 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.8.0] - 2026-09-26
+
+### Added
+
+- one-command VPS installer: `sudo ./deploy/install-server.sh`;
+- автоматическая установка базовых пакетов и Go 1.25 при необходимости;
+- автоматическая генерация 256-bit tunnel PSK;
+- автоматическая генерация pinned self-signed ECDSA TLS certificate, если пользователь не передал свой;
+- автоматический выбор TCP/443 для новой установки с fallback на 9443, если 443 уже занят;
+- отдельный системный пользователь `chameleon`;
+- hardened systemd unit с минимальной capability для bind к 443;
+- `chameleon-health.timer` с локальным TLS probe и автоматическим restart при сбое;
+- `chameleonctl` для status/logs/client/health/restart/update;
+- root-only client profile с endpoint, PSK и TLS fingerprint;
+- best-effort настройка активного UFW/firewalld;
+- deployment shell syntax теперь проверяется в CI;
+- добавлена подробная инструкция `docs/server_install.md`.
+
+### Changed
+
+- повторный запуск installer сохраняет существующие PSK и TLS certificate;
+- legacy `install-tunnel.sh` перенаправляет на новый installer;
+- server listen address и decoy file могут задаваться через environment;
+- upgrade активного systemd service теперь делает restart, а не оставляет старый процесс;
+- сгенерированный certificate не содержит Chameleon в subject.
+
+### Notes
+
+- server-side TCP/TLS deployment теперь рассчитан на постоянную эксплуатацию через systemd;
+- arbitrary client traffic всё ещё требует local SOCKS/embedded/router entry point;
+- UDP/QUIC general-purpose path и полноценные Android/Windows clients остаются следующими этапами.
+
+## [0.7.0] - 2026-09-26
+
+### Added
+
+- TLS-fronted Chameleon tunnel carrier;
+- certificate SHA-256 pinning для private/self-signed deployments;
+- normal CA verification для пользовательского certificate;
+- decoy HTTP response для обычных HTTPS probes;
+- adaptive `chameleon-tls` carrier с приоритетом перед raw TCP fallback;
+- DPI split может применяться к реальному TLS ClientHello;
+- integration tests TLS handshake, pinning, decoy и adaptive proxy.
+
+### Changed
+
+- raw Chameleon TCP остаётся отдельным fallback carrier;
+- TLS front использует обычный TLS stack, а Chameleon handshake идёт внутри него.
+
 ## [0.6.0] - 2026-09-25
 
 ### Added

@@ -17,6 +17,8 @@ Chameleon Protocol — исследовательский адаптивный t
 - Combined Adaptive Planner с раздельным обучением DPI-сбоев и недоступных маршрутов
 - реальный local SOCKS5 proxy без системного TUN/VPN
 - encrypted Chameleon TCP tunnel до VPS как рабочий fallback carrier
+- TLS-fronted Chameleon carrier с certificate pinning и decoy HTTPS response
+- one-command VPS installer + hardened systemd + automatic health monitor
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
 - автоматическое распознавание early EOF/RST/blackhole после успешного TCP connect
 - direct circuit breaker: после провала всех DPI strategies новый сеанс временно уходит на tunnel/relay
@@ -228,25 +230,35 @@ chameleon-protocol/
 - Go 1.25+
 - Linux, macOS или Windows с обычной Go toolchain
 
-### Сервер
-```bash
-cd /opt/Chameleon-Protocol
-git pull origin main
-go mod tidy
-GOOS=linux GOARCH=amd64 go build -v -o chameleon-server ./cmd/server
-sudo mv -f chameleon-server /opt/chameleon/chameleon-server
-sudo chmod 0755 /opt/chameleon/chameleon-server
-sudo cp deploy/chameleon.service /etc/systemd/system/chameleon.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now chameleon
-sudo journalctl -u chameleon -f
-```
+### Сервер: one-command VPS install
 
-или локально в authenticated-only режиме:
+На Ubuntu/Debian достаточно:
 
 ```bash
-go run ./cmd/server --address=127.0.0.1:9000 --require-auth
+git clone https://github.com/crakacr-alt/Chameleon-Protocol.git
+cd Chameleon-Protocol
+sudo ./deploy/install-server.sh
 ```
+
+Installer сам создаёт PSK, TLS certificate/pin, systemd service и health timer.
+На новой установке используется TCP/443, если порт свободен; иначе 9443.
+
+После установки:
+
+```bash
+chameleonctl status
+sudo chameleonctl client
+sudo chameleonctl health
+```
+
+Повторный запуск installer обновляет бинарники, сохраняя существующие secrets.
+Для managed checkout доступно:
+
+```bash
+sudo chameleonctl update
+```
+
+Подробнее: [docs/server_install.md](docs/server_install.md)
 
 ### Клиент
 
@@ -298,14 +310,15 @@ go run ./cmd/proxy \
   --direct-cooldown=5m
 ```
 
-Для VPS deployment через systemd:
+Для постоянного VPS deployment используйте:
 
 ```bash
-export CHAMELEON_TUNNEL_PSK="$(openssl rand -hex 32)"
-sudo -E ./deploy/install-tunnel.sh
+sudo ./deploy/install-server.sh
 ```
 
-Подробнее: [docs/socks_tunnel.md](docs/socks_tunnel.md)
+Installer автоматически включает TLS-front, systemd restart и health monitor.
+
+Подробнее: [docs/server_install.md](docs/server_install.md) и [docs/socks_tunnel.md](docs/socks_tunnel.md)
 
 ### Adaptive planner
 
@@ -373,15 +386,14 @@ ss -lunp | grep 9000
 ### What is ready / what is still next
 
 **Ready now**
-- local SOCKS5 proxy + encrypted TCP tunnel fallback
+- local SOCKS5 proxy + encrypted TCP/TLS tunnel fallback
+- TLS front with certificate pinning and decoy HTTPS response
 - adaptive direct / tunnel / external relay selection
-- release-ready README and bilingual summary
+- one-command Linux VPS install with hardened systemd and health timer
 - adaptive learning and session memory
 - benchmark comparison matrix
-- Linux VPS deployment bundle with systemd service
 
 **Still next**
-- TLS/HTTP carrier masquerade for the TCP tunnel
 - UDP/QUIC general-purpose proxy path
 - session resume across carrier switches
 - fingerprint UX и optional configured trust anchors поверх TOFU
