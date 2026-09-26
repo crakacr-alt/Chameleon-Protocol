@@ -1,19 +1,40 @@
 [Unit]
-Description=Chameleon Protocol encrypted TCP tunnel
+Description=Chameleon Protocol TLS tunnel
+Documentation=https://github.com/crakacr-alt/Chameleon-Protocol
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/chameleon
+User=chameleon
+Group=chameleon
+WorkingDirectory=/var/lib/chameleon
 EnvironmentFile=/etc/chameleon/tunnel.env
-ExecStart=/opt/chameleon/chameleon-tunnel-server --listen=:9443
+ExecStart=/usr/local/bin/chameleon-tunnel-server
 Restart=always
 RestartSec=2
+TimeoutStopSec=10
+LimitNOFILE=65536
+UMask=0077
+
+# Port 443 is supported without running the whole service as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target
