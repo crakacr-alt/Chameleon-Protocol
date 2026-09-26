@@ -159,3 +159,59 @@ func TestDPIFailureKeepsDirectCarrierAndEscalatesStrategy(t *testing.T) {
 		t.Fatalf("expected DPI escalation to split-early, got %q", next.DPI.Strategy.Name)
 	}
 }
+
+func TestPlannerUsesDirectDPIForQUIC(t *testing.T) {
+	p := newTestPlanner(t)
+	networkID := "mobile-quic"
+	endpoint := "server:443"
+
+	// Even if split-early previously worked for this endpoint, it is a TCP
+	// first-write technique and must not be attached to the QUIC carrier.
+	if err := p.DPI.Observe(dpi.Observation{
+		Context: dpi.Context{
+			NetworkID:    networkID,
+			Destination:  endpoint,
+			TrafficClass: "web",
+		},
+		Strategy: "split-early",
+		Success:  true,
+		At:       time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make direct carrier unattractive so the planner selects QUIC.
+	carrierCtx := carrier.Context{
+		NetworkID:    networkID,
+		Destination:  "example.com:443",
+		TrafficClass: "web",
+		Protocol:     "tcp",
+	}
+	if err := p.Carriers.Observe(carrier.Observation{
+		Context: carrierCtx,
+		Carrier: "direct",
+		Success: false,
+		At:      time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := Request{
+		Network:       networkctx.Context{ID: networkID},
+		Destination:   "example.com:443",
+		Protocol:      "tcp",
+		Purpose:       "web",
+		Carriers:      carrier.WithQUIC(carrier.Defaults("", "", ""), endpoint),
+		DPIStrategies: dpi.DefaultStrategies(),
+	}
+	plan, err := p.Choose(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Carrier.Carrier.Kind != carrier.KindChameleonQUIC {
+		t.Fatalf("want QUIC carrier, got %s", plan.Carrier.Carrier.Kind)
+	}
+	if plan.DPI.Strategy.Name != "direct" {
+		t.Fatalf("QUIC must use direct DPI policy, got %q", plan.DPI.Strategy.Name)
+	}
+}

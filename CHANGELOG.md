@@ -2,6 +2,46 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [0.9.0] - 2026-09-26
+
+### Added
+
+- настоящий QUIC carrier поверх UDP на базе `quic-go`;
+- TLS 1.3 + обычная CA verification или SHA-256 certificate pinning для QUIC;
+- Chameleon authenticated tunnel handshake и encrypted stream работают внутри QUIC bidirectional stream;
+- сервер одновременно принимает TLS/TCP и QUIC/UDP на одном номере порта;
+- новый adaptive carrier `chameleon-quic`;
+- unknown-path race двух самых дешёвых carrier с небольшим stagger вместо последовательных длинных timeout;
+- carrier memory получила `LastObservation` и time decay с half-life 24 часа;
+- planner умеет определять наличие evidence для конкретной network/destination context;
+- installer автоматически включает QUIC listener, открывает TCP+UDP firewall rules и сохраняет QUIC endpoint в client profile;
+- health monitor проверяет наличие QUIC UDP listener;
+- добавлены `VERSION`, `pkg/version` и `--version` для основных runtime binaries;
+- добавлена документация `docs/quic.md` и `docs/versioning.md`.
+
+### Changed
+
+- toolchain проекта поднят до Go 1.27;
+- `quic-go` закреплён на v0.63.0;
+- stale carrier failures больше не влияют на выбор маршрута бесконечно;
+- TCP-only DPI strategies не применяются к QUIC для видимости: QUIC использует direct DPI policy до появления реального UDP packet backend;
+- CI теперь дополнительно проверяет, что `go mod tidy` не меняет `go.mod/go.sum`.
+
+### Tests
+
+- добавлен QUIC end-to-end tunnel test;
+- добавлена проверка TLS certificate pinning для QUIC;
+- добавлены тесты staggered carrier racing;
+- добавлены тесты time decay и context-specific evidence;
+- добавлен regression test, запрещающий назначать TCP split strategy на QUIC;
+- полный `go test ./...` также проверен на отдельном Ubuntu host с Go 1.27.1.
+
+### Notes
+
+- 0.9.0 переносит TCP proxy streams через реальный UDP/QUIC transport;
+- SOCKS5 UDP ASSOCIATE и arbitrary application UDP datagrams намеренно не рекламируются как готовые в 0.9.0;
+- полноценный UDP datagram data path выделен в 0.9.1.
+
 ## [0.8.0] - 2026-09-26
 
 ### Added

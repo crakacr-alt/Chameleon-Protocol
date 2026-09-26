@@ -19,12 +19,15 @@ import (
 	adaptiveproxy "github.com/crakacr-alt/Chameleon-Protocol/pkg/proxy"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/socks5"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
+	buildversion "github.com/crakacr-alt/Chameleon-Protocol/pkg/version"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "print Chameleon version and exit")
 	listen := flag.String("listen", "127.0.0.1:1080", "local SOCKS5 listen address")
 	chameleonTCP := flag.String("chameleon-tcp", "", "optional raw Chameleon TCP tunnel endpoint")
 	chameleonTLS := flag.String("chameleon-tls", "", "optional TLS-fronted Chameleon tunnel endpoint")
+	chameleonQUIC := flag.String("chameleon-quic", "", "optional UDP/QUIC Chameleon tunnel endpoint")
 	tlsServerName := flag.String("tls-server-name", "", "TLS server name/SNI for --chameleon-tls")
 	tlsInsecure := flag.Bool("tls-insecure", false, "skip normal TLS certificate verification (not recommended)")
 	tlsFingerprint := flag.String("tls-fingerprint", "", "optional pinned TLS certificate SHA-256 fingerprint")
@@ -37,11 +40,16 @@ func main() {
 	failureWindow := flag.Duration("failure-window", 12*time.Second, "first-response window used for automatic DPI failure learning")
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Println(buildversion.Current)
+		return
+	}
+
 	tunnelPSK := *psk
 	if tunnelPSK == "" {
 		tunnelPSK = os.Getenv("CHAMELEON_TUNNEL_PSK")
 	}
-	if (*chameleonTCP != "" || *chameleonTLS != "") && tunnelPSK == "" {
+	if (*chameleonTCP != "" || *chameleonTLS != "" || *chameleonQUIC != "") && tunnelPSK == "" {
 		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required for Chameleon tunnel carriers")
 		os.Exit(2)
 	}
@@ -70,9 +78,12 @@ func main() {
 		panic(err)
 	}
 
-	carriers := carrier.WithTLS(
-		carrier.Defaults("", *chameleonTCP, *relaySOCKS),
-		*chameleonTLS,
+	carriers := carrier.WithQUIC(
+		carrier.WithTLS(
+			carrier.Defaults("", *chameleonTCP, *relaySOCKS),
+			*chameleonTLS,
+		),
+		*chameleonQUIC,
 	)
 
 	dialer := &adaptiveproxy.AdaptiveDialer{
@@ -118,6 +129,9 @@ func main() {
 	}()
 
 	fmt.Printf("Chameleon SOCKS5 proxy listening on %s\n", listener.Addr())
+	if *chameleonQUIC != "" {
+		fmt.Printf("Chameleon QUIC fallback: %s\n", *chameleonQUIC)
+	}
 	if *chameleonTLS != "" {
 		fmt.Printf("Chameleon TLS fallback: %s\n", *chameleonTLS)
 	}
