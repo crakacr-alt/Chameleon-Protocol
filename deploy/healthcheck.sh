@@ -16,12 +16,17 @@ if ! [[ "$port" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-if curl -kfsS --connect-timeout 3 --max-time 5   "https://127.0.0.1:$port/" >/dev/null; then
+healthy() {
+  curl -kfsS --connect-timeout 3 --max-time 5     "https://127.0.0.1:$port/" >/dev/null &&
+    ss -H -lun "sport = :$port" 2>/dev/null | grep -q .
+}
+
+if healthy; then
   exit 0
 fi
 
-echo "Chameleon local health check failed; restarting service" >&2
+echo "Chameleon TLS/QUIC health check failed; restarting service" >&2
 systemctl restart chameleon-tunnel.service
 sleep 2
 
-curl -kfsS --connect-timeout 3 --max-time 5   "https://127.0.0.1:$port/" >/dev/null
+healthy
