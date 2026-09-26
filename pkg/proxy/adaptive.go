@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/dpi"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/networkctx"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/planner"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/probe"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/socks5"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/traffic"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
@@ -42,6 +44,14 @@ type AdaptiveDialer struct {
 	// ApplicationFailureWindow limits automatic DPI-failure classification
 	// to early failures after a TCP connection was already established.
 	ApplicationFailureWindow time.Duration
+
+	// RaceDelay controls the stagger between the cheapest two carriers on an
+	// unknown path. A quick direct connection wins before the fallback starts.
+	RaceDelay time.Duration
+
+	// DisableInitialRace is intended for very constrained or test environments.
+	// Normal clients should keep the small first-use race enabled.
+	DisableInitialRace bool
 
 	Network    NetworkFunc
 	DirectDial TCPDialFunc
@@ -122,6 +132,28 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 		DPIStrategies: a.DPIStrategies,
 	}
 
+	carrierCtx := carrier.Context{
+		NetworkID:    network.ID,
+		Destination:  destination,
+		TrafficClass: string(class),
+		Protocol:     "tcp",
+	}
+	if !a.DisableInitialRace &&
+		len(candidates) > 1 &&
+		!a.Planner.Carriers.HasEvidence(carrierCtx, candidates) {
+		conn, plan, latency, raceErr := a.raceUnknown(
+			ctx,
+			req,
+			destination,
+			timeout,
+			failureWindow,
+			directDial,
+		)
+		if raceErr == nil {
+			return a.recordSuccessfulConnection(conn, plan, destination, latency, failureWindow)
+		}
+	}
+
 	maxAttempts := len(candidates) + 2
 	seen := make(map[string]bool)
 	var lastErr error
@@ -154,50 +186,133 @@ func (a *AdaptiveDialer) DialContext(ctx context.Context, destination string) (n
 			continue
 		}
 
-		if err := a.Planner.Observe(planner.Result{
-			Plan:        plan,
-			Destination: destination,
-			Protocol:    "tcp",
-			Success:     true,
-			Scope:       planner.ScopeCarrier,
-			Latency:     connectLatency,
-		}); err != nil {
-			_ = conn.Close()
-			return nil, err
-		}
-
-		learnApplicationDPI := plan.Carrier.Carrier.Kind == carrier.KindDirect
-		if !learnApplicationDPI {
-			// The tunnel/SOCKS handshake itself exchanged authenticated or
-			// protocol-valid bytes with the visible first-hop endpoint.
-			if err := a.Planner.Observe(planner.Result{
-				Plan:        plan,
-				Destination: destination,
-				Protocol:    "tcp",
-				Success:     true,
-				Scope:       planner.ScopeDPI,
-				Latency:     connectLatency,
-			}); err != nil {
-				_ = conn.Close()
-				return nil, err
-			}
-		}
-
-		return newLearningConn(
-			conn,
-			a.Planner,
-			plan,
-			destination,
-			connectLatency,
-			failureWindow,
-			learnApplicationDPI,
-		), nil
+		return a.recordSuccessfulConnection(conn, plan, destination, connectLatency, failureWindow)
 	}
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("adaptive plan exhausted without a usable TCP carrier")
 	}
 	return nil, lastErr
+}
+
+func (a *AdaptiveDialer) raceUnknown(
+	ctx context.Context,
+	req planner.Request,
+	destination string,
+	timeout time.Duration,
+	failureWindow time.Duration,
+	directDial TCPDialFunc,
+) (net.Conn, planner.Plan, time.Duration, error) {
+	candidates := append([]carrier.Candidate(nil), req.Carriers...)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].Cost < candidates[j].Cost
+	})
+	if len(candidates) > 2 {
+		candidates = candidates[:2]
+	}
+
+	raceDelay := a.RaceDelay
+	if raceDelay <= 0 {
+		raceDelay = 150 * time.Millisecond
+	}
+
+	plans := make(map[string]planner.Plan, len(candidates))
+	attempts := make([]probe.ConnAttempt, 0, len(candidates))
+	for i, candidate := range candidates {
+		single := req
+		single.Carriers = []carrier.Candidate{candidate}
+
+		plan, err := a.Planner.Choose(single)
+		if err != nil {
+			continue
+		}
+		plans[candidate.Name] = plan
+
+		delay := time.Duration(i) * raceDelay
+		planCopy := plan
+		attempts = append(attempts, probe.ConnAttempt{
+			Name:  candidate.Name,
+			Delay: delay,
+			Dial: func(attemptCtx context.Context) (net.Conn, error) {
+				return a.dialPlan(attemptCtx, destination, planCopy, timeout, directDial)
+			},
+		})
+	}
+	if len(attempts) < 2 {
+		return nil, planner.Plan{}, 0, fmt.Errorf("not enough race candidates")
+	}
+
+	winner, failures, err := probe.RaceConnections(ctx, attempts)
+	for _, failure := range failures {
+		plan, ok := plans[failure.Name]
+		if !ok || failure.Err == nil {
+			continue
+		}
+		_ = a.Planner.Observe(planner.Result{
+			Plan:        plan,
+			Destination: destination,
+			Protocol:    "tcp",
+			Success:     false,
+			Scope:       planner.ScopeCarrier,
+			Latency:     failure.Latency,
+			Failure:     failure.Err.Error(),
+		})
+	}
+	if err != nil {
+		return nil, planner.Plan{}, 0, err
+	}
+
+	plan, ok := plans[winner.Name]
+	if !ok {
+		_ = winner.Conn.Close()
+		return nil, planner.Plan{}, 0, fmt.Errorf("race winner has no plan")
+	}
+	return winner.Conn, plan, winner.Latency, nil
+}
+
+func (a *AdaptiveDialer) recordSuccessfulConnection(
+	conn net.Conn,
+	plan planner.Plan,
+	destination string,
+	connectLatency time.Duration,
+	failureWindow time.Duration,
+) (net.Conn, error) {
+	if err := a.Planner.Observe(planner.Result{
+		Plan:        plan,
+		Destination: destination,
+		Protocol:    "tcp",
+		Success:     true,
+		Scope:       planner.ScopeCarrier,
+		Latency:     connectLatency,
+	}); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
+	learnApplicationDPI := plan.Carrier.Carrier.Kind == carrier.KindDirect
+	if !learnApplicationDPI {
+		if err := a.Planner.Observe(planner.Result{
+			Plan:        plan,
+			Destination: destination,
+			Protocol:    "tcp",
+			Success:     true,
+			Scope:       planner.ScopeDPI,
+			Latency:     connectLatency,
+		}); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
+	}
+
+	return newLearningConn(
+		conn,
+		a.Planner,
+		plan,
+		destination,
+		connectLatency,
+		failureWindow,
+		learnApplicationDPI,
+	), nil
 }
 
 func (a *AdaptiveDialer) dialPlan(
