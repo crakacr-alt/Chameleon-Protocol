@@ -20,8 +20,8 @@ type directUDPResponse struct {
 // One connected UDP socket is cached per destination. This preserves UDP packet
 // boundaries and lets response packets retain their source destination.
 type DirectUDPAssociation struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx     context.Context
+	cancel  context.CancelFunc
 	timeout time.Duration
 
 	mu    sync.Mutex
