@@ -23,10 +23,10 @@ import (
 )
 
 type doctorReport struct {
-	Version string                 `json:"version"`
-	Config  string                 `json:"config"`
-	Network networkctx.Context     `json:"network"`
-	Checks  []doctorCheck          `json:"checks"`
+	Version string             `json:"version"`
+	Config  string             `json:"config"`
+	Network networkctx.Context `json:"network"`
+	Checks  []doctorCheck      `json:"checks"`
 }
 
 type doctorCheck struct {
