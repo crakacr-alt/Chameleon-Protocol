@@ -250,7 +250,7 @@ public final class MainActivity extends Activity {
             for (int read; (read = input.read(buffer)) >= 0; ) {
                 bytes.write(buffer, 0, read);
             }
-            String profile = bytes.toString(StandardCharsets.UTF_8);
+            String profile = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
             String mode = modeSpinner.getSelectedItemPosition() == 1 ? "proxy" : "smart";
             String stateDir = new java.io.File(getFilesDir(), "state").getAbsolutePath();
             String config = Mobile.buildConfig(profile, stateDir, mode);
