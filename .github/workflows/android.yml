@@ -59,7 +59,11 @@ jobs:
       - name: Install gomobile
         shell: bash
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
+          mobile_version="v0.0.0-20260908204917-8b95e45f8d3e"
+          go install "golang.org/x/mobile/cmd/gomobile@${mobile_version}"
+          # Go 1.27 gomobile requires gobind to be present in the module tool
+          # graph. Keep this Android-only mutation inside the CI checkout.
+          go get -tool "golang.org/x/mobile/cmd/gobind@${mobile_version}"
           gomobile init
           gomobile version
 
