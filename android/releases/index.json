@@ -8,7 +8,7 @@
       "date": "2026-09-27",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.1/Chameleon-Android-v1.0.0-alpha.1.apk",
-      "sha256": "",
+      "sha256": "d82e46ba4abe0d9d0539ae60b6cd86a25080335f08be554a8e09b92ffa98822a",
       "changes": [
         "Первый открытый Android-клиент Chameleon.",
         "Простой интерфейс с одной большой кнопкой подключения.",
