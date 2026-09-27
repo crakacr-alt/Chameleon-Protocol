@@ -5,11 +5,14 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -99,8 +102,13 @@ final class UpdateRepository {
                 }
 
                 byte[] bytes;
-                try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream())) {
-                    bytes = input.readAllBytes();
+                try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream());
+                     ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[8192];
+                    for (int read; (read = input.read(buffer)) >= 0; ) {
+                        output.write(buffer, 0, read);
+                    }
+                    bytes = output.toByteArray();
                 } finally {
                     connection.disconnect();
                 }
@@ -131,9 +139,11 @@ final class UpdateRepository {
                 }
 
                 Index index = new Index(latest, releases);
-                context.getMainExecutor().execute(() -> callback.onLoaded(index));
+                Handler main = new Handler(Looper.getMainLooper());
+                main.post(() -> callback.onLoaded(index));
             } catch (Exception error) {
-                context.getMainExecutor().execute(() -> callback.onError(error));
+                Handler main = new Handler(Looper.getMainLooper());
+                main.post(() -> callback.onError(error));
             }
         }, "chameleon-update-check").start();
     }
