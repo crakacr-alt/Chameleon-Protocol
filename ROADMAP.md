@@ -42,11 +42,23 @@ Status: implemented in release/v1.0.0; release requires green CI.
 - live carrier/network diagnostics.
 
 ## 1.2 — Android
-- Android VpnService client;
+
+Early alpha already implemented:
+- native Android UI;
+- shared Go core through gomobile;
+- profile import;
+- foreground local SOCKS5;
+- Smart / Proxy mode;
+- Tailscale coexistence without VpnService;
+- GitHub version browser and update channel.
+
+Still required for stable 1.2:
+- optional Android VpnService client;
 - per-app routing;
 - QR/profile import;
 - battery-aware probing;
-- proxy/embedded mode for coexistence scenarios.
+- polished proxy/embedded coexistence controls;
+- permanent release signing key.
 
 ## 1.3 — Router/Gateway
 - OpenWrt/Linux gateway mode;
