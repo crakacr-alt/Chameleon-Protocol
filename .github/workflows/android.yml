@@ -51,8 +51,7 @@ jobs:
           fi
           echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
           echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
-          yes | "$sdkmanager_bin" --licenses >/dev/null
-          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          # GitHub-hosted Android images already include accepted SDK licenses.\n          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Test Go core
         run: go test ./...
