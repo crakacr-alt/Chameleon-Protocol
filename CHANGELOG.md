@@ -2,6 +2,43 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.0-alpha.1] - 2026-09-27
+
+### Added
+
+- первый open-source Android client в каталоге `android/`;
+- общий Chameleon Protocol 1.0.0 Go-core через `gomobile` AAR;
+- простой one-button UI в духе минимальных proxy clients;
+- импорт VPS `client-profile.txt` через Android document picker;
+- приватное хранение client config/PSK внутри app sandbox;
+- Smart и Proxy modes;
+- foreground service для local SOCKS5 `127.0.0.1:1080`;
+- Proxy mode не использует Android `VpnService`, поэтому может работать рядом с Tailscale;
+- экран доступных версий и release notes;
+- public GitHub release index;
+- автоматическая проверка новых Android версий;
+- автоматическая загрузка APK через DownloadManager;
+- SHA-256 проверка APK перед установкой;
+- передача финальной установки штатному Android Package Installer;
+- GitHub Actions build: Go tests → gomobile AAR → Gradle APK;
+- PR debug APK artifact;
+- автоматическая публикация signed alpha APK в GitHub Releases после merge в main.
+
+### Compatibility
+
+- minimum Android: 6.0 / API 23;
+- target SDK: 35;
+- protocol version внутри alpha: 1.0.0;
+- Android 1.0.0-alpha.1 — proxy client, не system-wide VPN;
+- полноценный optional VpnService и per-app routing остаются задачей Android 1.2.
+
+### Security
+
+- APK update index загружается только из public Chameleon GitHub repository;
+- поддерживается SHA-256 verification опубликованного APK;
+- alpha signing key не хранится в открытых исходниках;
+- stable Android 1.2 будет использовать отдельный постоянный release signing key.
+
 ## [1.0.0] - 2026-09-26
 
 ### Added
