@@ -28,7 +28,7 @@ die() {
 }
 
 if [ "$(id -u)" -ne 0 ]; then
-  die "run as root: sudo ./deploy/install-server.sh"
+  die "run as root: sudo bash deploy/install-server.sh"
 fi
 
 export DEBIAN_FRONTEND=noninteractive
