@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "latest": "1.0.0-alpha.1",
+  "releases": [
+    {
+      "version": "1.0.0-alpha.1",
+      "protocol": "1.0.0",
+      "date": "2026-09-27",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.1/Chameleon-Android-v1.0.0-alpha.1.apk",
+      "sha256": "",
+      "changes": [
+        "Первый открытый Android-клиент Chameleon.",
+        "Простой интерфейс с одной большой кнопкой подключения.",
+        "Импорт server client-profile.txt без ручного ввода PSK.",
+        "Smart и Proxy режимы поверх общего Go-core Chameleon 1.0.0.",
+        "Локальный SOCKS5 127.0.0.1:1080: Android VPN-слот остаётся свободным для Tailscale.",
+        "Список версий и CHANGELOG прямо в приложении.",
+        "Автопроверка GitHub и автоматическая загрузка новой версии.",
+        "SHA-256 проверка APK перед передачей системному установщику Android."
+      ]
+    }
+  ]
+}

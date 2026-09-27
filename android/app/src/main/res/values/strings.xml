@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Chameleon</string>
+    <string name="channel_connection">Chameleon connection</string>
+    <string name="channel_updates">Chameleon updates</string>
+</resources>

@@ -1,0 +1,185 @@
+name: Android APK
+
+on:
+  pull_request:
+    paths:
+      - "android/**"
+      - "mobile/**"
+      - "pkg/clientapp/**"
+      - "pkg/clientconfig/**"
+      - ".github/workflows/android.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "android/**"
+      - "mobile/**"
+      - "pkg/clientapp/**"
+      - "pkg/clientconfig/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdkmanager_bin="$(find "$sdk_root/cmdline-tools" -type f -path "*/bin/sdkmanager" | sort -V | tail -n1)"
+          if [ -z "$sdkmanager_bin" ]; then
+            echo "sdkmanager not found under $sdk_root" >&2
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
+          # GitHub-hosted Android images already include accepted SDK licenses.\n          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Test Go core
+        run: go test ./...
+
+      - name: Install gomobile
+        shell: bash
+        run: |
+          mobile_version="v0.0.0-20260908204917-8b95e45f8d3e"
+          go install "golang.org/x/mobile/cmd/gomobile@${mobile_version}"
+          # Go 1.27 gomobile requires gobind to be present in the module tool
+          # graph. Keep this Android-only mutation inside the CI checkout.
+          go get -tool "golang.org/x/mobile/cmd/gobind@${mobile_version}"
+          gomobile init
+          gomobile version
+
+      - name: Build Chameleon Android AAR
+        shell: bash
+        run: |
+          mkdir -p android/app/libs
+          gomobile bind \
+            -target=android \
+            -androidapi=23 \
+            -trimpath \
+            -o android/app/libs/chameleon.aar \
+            ./mobile
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        run: gradle -p android --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Chameleon-Android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Restore alpha signing key
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        id: alpha-key
+        uses: actions/cache@v4
+        with:
+          path: android/.signing/chameleon-alpha.jks
+          key: chameleon-android-alpha-signing-v1
+
+      - name: Create alpha signing key
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.alpha-key.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p android/.signing
+          keytool -genkeypair \
+            -keystore android/.signing/chameleon-alpha.jks \
+            -storepass chameleon-alpha-build \
+            -keypass chameleon-alpha-build \
+            -alias chameleon-alpha \
+            -keyalg RSA \
+            -keysize 3072 \
+            -validity 3650 \
+            -dname "CN=Chameleon Android Alpha,O=Chameleon Protocol"
+
+      - name: Build signed alpha release APK
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          CHAMELEON_KEYSTORE: ${{ github.workspace }}/android/.signing/chameleon-alpha.jks
+          CHAMELEON_KEYSTORE_PASSWORD: chameleon-alpha-build
+          CHAMELEON_KEY_ALIAS: chameleon-alpha
+          CHAMELEON_KEY_PASSWORD: chameleon-alpha-build
+        shell: bash
+        run: |
+          gradle -p android --no-daemon assembleRelease
+          version="$(tr -d '[:space:]' < android/VERSION)"
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            "Chameleon-Android-${version}.apk"
+          sha256sum "Chameleon-Android-${version}.apk"
+
+      - name: Publish GitHub Android release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < android/VERSION)"
+          tag="android-v${version}"
+          apk="Chameleon-Android-${version}.apk"
+          notes="android/releases/${version}.md"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --clobber
+          else
+            gh release create "$tag" "$apk" \
+              --target "$GITHUB_SHA" \
+              --title "Chameleon Android ${version}" \
+              --notes-file "$notes"
+          fi
+
+      - name: Update published APK SHA-256
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < android/VERSION)"
+          apk="Chameleon-Android-${version}.apk"
+          sha="$(sha256sum "$apk" | awk '{print $1}')"
+
+          python3 - "$version" "$sha" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          version, sha = sys.argv[1], sys.argv[2]
+          path = pathlib.Path("android/releases/index.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          for release in data["releases"]:
+              if release["version"] == version:
+                  release["sha256"] = sha
+                  break
+          else:
+              raise SystemExit(f"release {version} missing from index")
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          if git diff --quiet -- android/releases/index.json; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/releases/index.json
+          git commit -m "chore(android): publish ${version} APK checksum [skip ci]"
+          git push origin HEAD:main

@@ -25,6 +25,7 @@ Chameleon Protocol — исследовательский адаптивный t
 - IPv4/IPv6 Happy-Eyeballs-style racing для диагностики сетевого пути
 - единый Chameleon 1.0 client: import/connect/status/doctor/show
 - стабильный config schema v1 и Linux/Windows service install
+- Android alpha client: простой UI, import profile, foreground SOCKS5 и GitHub auto-update channel
 - one-command VPS installer + hardened systemd + automatic health monitor
 - внешний SOCKS5 relay/sidecar как ещё один optional fallback
 - автоматическое распознавание early EOF/RST/blackhole после успешного TCP connect
@@ -340,6 +341,27 @@ sudo ./deploy/install-server.sh
 Installer автоматически включает TLS-front, systemd restart и health monitor.
 
 Подробнее: [docs/server_install.md](docs/server_install.md) и [docs/socks_tunnel.md](docs/socks_tunnel.md)
+
+### Android alpha client
+
+Первый Android-клиент использует тот же Go-core через `gomobile`:
+
+```text
+Android 6.0+
+Chameleon Android 1.0.0-alpha.1
+Protocol 1.0.0
+SOCKS5 127.0.0.1:1080
+```
+
+Он работает как local proxy sidecar и **не занимает Android VPN slot**, поэтому
+Tailscale можно оставить включённым.
+
+APK собирается и публикуется GitHub Actions. В приложении есть список версий,
+история изменений, проверка GitHub, автоматическая загрузка обновлений и
+SHA-256 проверка APK. Финальную установку Android всегда подтверждает системным
+окном.
+
+Подробнее: [docs/android.md](docs/android.md)
 
 ### Chameleon 1.0 client
 
