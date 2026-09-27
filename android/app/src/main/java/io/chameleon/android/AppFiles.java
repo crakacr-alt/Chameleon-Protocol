@@ -4,9 +4,11 @@ import android.content.Context;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 
 /**
  * Centralizes private app files.
@@ -28,11 +30,21 @@ final class AppFiles {
     }
 
     static String readConfig(Context context) throws Exception {
-        return Files.readString(configFile(context).toPath(), StandardCharsets.UTF_8);
+        try (FileInputStream input = new FileInputStream(configFile(context));
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            for (int read; (read = input.read(buffer)) >= 0; ) {
+                output.write(buffer, 0, read);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        }
     }
 
     static void writeConfig(Context context, String config) throws Exception {
-        Files.writeString(configFile(context).toPath(), config, StandardCharsets.UTF_8);
+        try (FileOutputStream output = new FileOutputStream(configFile(context), false)) {
+            output.write(config.getBytes(StandardCharsets.UTF_8));
+            output.flush();
+        }
     }
 
     static String serverLabel(Context context) {
