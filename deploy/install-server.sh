@@ -97,15 +97,26 @@ prepare_source() {
   if [ ! -d "$REPO_DIR/.git" ]; then
     [ ! -e "$REPO_DIR" ] || die "$REPO_DIR exists but is not a git checkout"
     log "cloning managed repository to $REPO_DIR"
-    git clone --depth=1 --branch=main "$REPO_URL" "$REPO_DIR"
+    # prepare_source is called through command substitution. Keep every git
+    # diagnostic on stderr so stdout contains only the final source path.
+    git clone --depth=1 --branch=main "$REPO_URL" "$REPO_DIR" >&2
   else
     log "updating managed source in $REPO_DIR"
-    git -C "$REPO_DIR" fetch --depth=1 origin main
-    git -C "$REPO_DIR" checkout -B main origin/main
-    git -C "$REPO_DIR" reset --hard origin/main
-    git -C "$REPO_DIR" clean -fd
+    git -C "$REPO_DIR" fetch --depth=1 origin main >&2
+
+    # /opt/chameleon is a disposable managed checkout. Older installers and
+    # manual builds could leave modified, untracked or ignored binaries there.
+    # Clean them before switching to origin/main so upgrades cannot be blocked
+    # by files such as a stale ./chameleon-server.
+    git -C "$REPO_DIR" reset --hard HEAD >&2
+    git -C "$REPO_DIR" clean -fdx >&2
+    git -C "$REPO_DIR" checkout -B main origin/main >&2
+    git -C "$REPO_DIR" reset --hard origin/main >&2
+    git -C "$REPO_DIR" clean -fdx >&2
   fi
-  printf '%s' "$REPO_DIR"
+
+  # This is intentionally the only stdout produced by prepare_source().
+  printf '%s\n' "$REPO_DIR"
 }
 
 ensure_user() {
