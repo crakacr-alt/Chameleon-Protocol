@@ -2,6 +2,22 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.0.1] - 2026-09-27
+
+### Fixed
+
+- server installer managed checkout now cleans stale modified/untracked/ignored files before switching to `origin/main`;
+- stale files such as an old `/opt/chameleon/chameleon-server` can no longer block upgrades;
+- all git diagnostics from `prepare_source()` are redirected away from stdout;
+- command substitution now receives only the source directory path, preventing messages such as `HEAD is now at ...` from corrupting the `src` variable;
+- repeated installs and upgrades from older managed checkouts are self-healing.
+
+### Notes
+
+- `/opt/chameleon` is treated as a disposable managed checkout;
+- runtime secrets and certificates remain under `/etc/chameleon` and are not removed by source cleanup;
+- wire protocol behavior is unchanged from 1.0.0.
+
 ## [Android 1.0.0-alpha.1] - 2026-09-27
 
 ### Added
