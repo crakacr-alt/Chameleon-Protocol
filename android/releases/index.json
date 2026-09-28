@@ -1,14 +1,31 @@
 {
   "schema": 1,
-  "latest": "1.0.0-alpha.2",
+  "latest": "1.0.0-alpha.3",
   "releases": [
+    {
+      "version": "1.0.0-alpha.3",
+      "protocol": "1.0.2",
+      "date": "2026-09-29",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.3/Chameleon-Android-1.0.0-alpha.3.apk",
+      "sha256": "",
+      "changes": [
+        "Полноценный системный VPN/TUN режим для всего Android.",
+        "IPv4/IPv6 TUN -> open-source tun2socks -> общий Chameleon SOCKS/core.",
+        "VPN mode использует Chameleon-only carrier path без direct fallback.",
+        "Pinned hev-socks5-tunnel 2.18.0 AAR с SHA-256 проверкой в CI.",
+        "Отдельное VPN уведомление с быстрым отключением.",
+        "Smart остаётся режимом совместимости с другим Android VPN.",
+        "В release index добавлена пропущенная SHA-256 alpha.2."
+      ]
+    },
     {
       "version": "1.0.0-alpha.2",
       "protocol": "1.0.2",
       "date": "2026-09-29",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.2/Chameleon-Android-1.0.0-alpha.2.apk",
-      "sha256": "",
+      "sha256": "30509af29a2f75f2d7ebd43b8cd83829f0ed745ade4f2645984423b80ee0cf63",
       "changes": [
         "Новый значок Chameleon.",
         "Smart/Proxy переключаются сразу без повторного импорта профиля.",
@@ -39,4 +56,4 @@
       ]
     }
   ]
-}\n
+}
