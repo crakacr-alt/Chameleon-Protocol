@@ -58,5 +58,4 @@ android {
 
 dependencies {
     implementation files("libs/chameleon.aar")
-    implementation files("libs/hev-socks5-tunnel.aar")
 }
