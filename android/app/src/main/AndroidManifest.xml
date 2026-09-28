@@ -15,13 +15,8 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
 
-        <activity
-            android:name=".InstallerActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".VersionActivity"
-            android:exported="false" />
+        <activity android:name=".InstallerActivity" android:exported="false" />
+        <activity android:name=".VersionActivity" android:exported="false" />
 
         <activity
             android:name=".MainActivity"
@@ -41,9 +36,30 @@
                 android:value="Local adaptive SOCKS5 proxy for Chameleon Protocol" />
         </service>
 
+        <service
+            android:name=".ChameleonTile"
+            android:label="@string/tile_label"
+            android:icon="@drawable/ic_chameleon"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <receiver
-            android:name=".UpdateReceiver"
-            android:exported="false">
+            android:name=".ChameleonWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="io.chameleon.android.WIDGET_TOGGLE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/chameleon_widget_info" />
+        </receiver>
+
+        <receiver android:name=".UpdateReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>

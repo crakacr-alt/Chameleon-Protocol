@@ -1,8 +1,4 @@
 // Package mobile is the small gomobile-facing API for the Android client.
-//
-// The UI intentionally depends on this tiny surface instead of importing
-// Chameleon internals. That keeps Android presentation code separate from the
-// transport engine and lets desktop/mobile clients share the same core.
 package mobile
 
 import (
@@ -10,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 
@@ -24,15 +21,10 @@ var controller struct {
 	done   chan error
 }
 
-// Version returns the embedded Chameleon protocol version.
 func Version() string {
 	return buildversion.Current
 }
 
-// BuildConfig converts the server-generated client profile into the canonical
-// JSON config consumed by the shared runtime. On error the returned string
-// begins with "ERROR:" so the Java bridge can report the problem without a
-// second binding type.
 func BuildConfig(profileText, stateDir, mode string) string {
 	cfg, err := clientconfig.ImportProfile(bytes.NewBufferString(profileText))
 	if err != nil {
@@ -49,8 +41,6 @@ func BuildConfig(profileText, stateDir, mode string) string {
 	}
 
 	cfg.StateDir = stateDir
-	// Keep localhost out of adaptive routing. Extra LAN rules can be added later
-	// from the Android settings screen without changing the protocol.
 	cfg.Bypass = []string{"localhost", "127.0.0.0/8", "::1/128"}
 
 	data, err := clientconfig.JSON(cfg)
@@ -60,7 +50,6 @@ func BuildConfig(profileText, stateDir, mode string) string {
 	return string(data)
 }
 
-// ValidateConfig returns an empty string when the JSON configuration is valid.
 func ValidateConfig(configJSON string) string {
 	_, err := clientconfig.ParseJSON([]byte(configJSON))
 	if err != nil {
@@ -69,8 +58,9 @@ func ValidateConfig(configJSON string) string {
 	return ""
 }
 
-// Start launches the shared Chameleon SOCKS runtime in the background.
-// Android owns lifecycle/foreground-service policy; Go owns networking.
+// Start binds the SOCKS listener before returning. Android can therefore trust
+// an empty error as "127.0.0.1:1080 is actually ready", instead of briefly
+// showing a connected state while a background bind has already failed.
 func Start(configJSON string) string {
 	cfg, err := clientconfig.ParseJSON([]byte(configJSON))
 	if err != nil {
@@ -88,13 +78,23 @@ func Start(configJSON string) string {
 		return err.Error()
 	}
 
+	listener, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return fmt.Sprintf("listen SOCKS: %v", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	controller.cancel = cancel
 	controller.done = done
 
 	go func() {
-		err := app.ListenAndServe(ctx)
+		<-ctx.Done()
+		_ = listener.Close()
+	}()
+
+	go func() {
+		err := app.Serve(ctx, listener)
 		done <- err
 		close(done)
 
@@ -107,7 +107,6 @@ func Start(configJSON string) string {
 	return ""
 }
 
-// Stop requests a graceful shutdown of the local proxy.
 func Stop() {
 	controller.Lock()
 	cancel := controller.cancel
@@ -117,14 +116,12 @@ func Stop() {
 	}
 }
 
-// Running reports whether the shared runtime currently owns an active context.
 func Running() bool {
 	controller.Lock()
 	defer controller.Unlock()
 	return controller.cancel != nil
 }
 
-// StatusJSON is deliberately secret-free and safe to show in the Android UI.
 func StatusJSON() string {
 	status := map[string]any{
 		"version": buildversion.Current,

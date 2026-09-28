@@ -3,6 +3,7 @@ package io.chameleon.android;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
@@ -11,14 +12,15 @@ import android.os.IBinder;
 import mobile.Mobile;
 
 /**
- * Foreground owner for the Go networking runtime.
+ * Foreground owner for the local Chameleon SOCKS runtime.
  *
- * Android owns process/lifecycle policy while the shared Go core owns SOCKS,
- * adaptive routing, QUIC/TLS/TCP and protocol state.
+ * The quick action always selects Smart mode before starting, so the user gets
+ * predictable one-tap behaviour without re-importing the profile.
  */
 public final class ChameleonService extends Service {
     static final String ACTION_START = "io.chameleon.android.START";
     static final String ACTION_STOP = "io.chameleon.android.STOP";
+    static final String ACTION_SMART_TOGGLE = "io.chameleon.android.SMART_TOGGLE";
 
     private static final String CHANNEL_ID = "chameleon_connection";
     private static final int NOTIFICATION_ID = 1001;
@@ -31,16 +33,25 @@ public final class ChameleonService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            Mobile.stop();
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+        String action = intent == null ? ACTION_START : intent.getAction();
+
+        if (ACTION_STOP.equals(action)) {
+            stopRuntime();
+            return START_NOT_STICKY;
+        }
+
+        if (ACTION_SMART_TOGGLE.equals(action) && Mobile.running()) {
+            stopRuntime();
             return START_NOT_STICKY;
         }
 
         startForeground(NOTIFICATION_ID, notification("Подключение…"));
 
         try {
+            if (ACTION_SMART_TOGGLE.equals(action)) {
+                AppFiles.forceSmart(this);
+            }
+
             String config = AppFiles.readConfig(this);
             String error = Mobile.start(config);
             if (error != null && !error.isEmpty()) {
@@ -48,7 +59,11 @@ public final class ChameleonService extends Service {
                 stopSelf();
                 return START_NOT_STICKY;
             }
-            notifyState("Подключено • SOCKS5 127.0.0.1:1080");
+
+            String mode = AppFiles.coreMode(this);
+            notifyState("Подключено • " + mode.toUpperCase() + " • SOCKS5 127.0.0.1:1080");
+            ChameleonWidget.updateAll(this);
+            ChameleonTile.requestRefresh(this);
             return START_STICKY;
         } catch (Exception error) {
             notifyState("Ошибка профиля: " + error.getMessage());
@@ -57,9 +72,19 @@ public final class ChameleonService extends Service {
         }
     }
 
+    private void stopRuntime() {
+        Mobile.stop();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+        ChameleonWidget.updateAll(this);
+        ChameleonTile.requestRefresh(this);
+    }
+
     @Override
     public void onDestroy() {
         Mobile.stop();
+        ChameleonWidget.updateAll(this);
+        ChameleonTile.requestRefresh(this);
         super.onDestroy();
     }
 
@@ -75,17 +100,22 @@ public final class ChameleonService extends Service {
                 getString(R.string.channel_connection),
                 NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("Состояние локального Chameleon proxy");
+        channel.setDescription("Состояние Chameleon");
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
 
     private Notification notification(String text) {
         Intent open = new Intent(this, MainActivity.class);
-        android.app.PendingIntent pending = android.app.PendingIntent.getActivity(
-                this,
-                0,
-                open,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE
+        PendingIntent pending = PendingIntent.getActivity(
+                this, 0, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Intent toggle = new Intent(this, ChameleonService.class);
+        toggle.setAction(Mobile.running() ? ACTION_STOP : ACTION_SMART_TOGGLE);
+        PendingIntent togglePending = PendingIntent.getService(
+                this, 1, toggle,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -97,6 +127,11 @@ public final class ChameleonService extends Service {
                 .setContentTitle("Chameleon")
                 .setContentText(text)
                 .setContentIntent(pending)
+                .addAction(new Notification.Action.Builder(
+                        R.drawable.ic_chameleon,
+                        Mobile.running() ? "Выключить" : "Smart",
+                        togglePending
+                ).build())
                 .setOngoing(Mobile.running())
                 .build();
     }

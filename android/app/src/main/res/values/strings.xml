@@ -3,4 +3,7 @@
     <string name="app_name">Chameleon</string>
     <string name="channel_connection">Chameleon connection</string>
     <string name="channel_updates">Chameleon updates</string>
+    <string name="channel_vpn">Chameleon VPN</string>
+    <string name="tile_label">Chameleon Smart</string>
+    <string name="widget_description">Быстрое включение Chameleon Smart</string>
 </resources>
