@@ -73,6 +73,9 @@ public final class ChameleonVpnService extends VpnService {
 
         startForeground(NOTIFICATION_ID, notification("Подключение VPN…"));
         stopping = false;
+        active = true;
+        ChameleonWidget.updateAll(this);
+        ChameleonTile.requestRefresh(this);
         new Thread(this::startTunnel, "chameleon-vpn").start();
         return START_STICKY;
     }
