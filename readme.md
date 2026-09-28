@@ -259,7 +259,7 @@ SOCKS5 UDP ASSOCIATE поддерживает direct UDP и QUIC DATAGRAM.
 ```bash
 git clone https://github.com/crakacr-alt/Chameleon-Protocol.git
 cd Chameleon-Protocol
-sudo ./deploy/install-server.sh
+sudo bash deploy/install-server.sh
 ```
 
 Installer сам создаёт PSK, TLS certificate/pin, systemd service и health timer.
@@ -335,7 +335,7 @@ go run ./cmd/proxy \
 Для постоянного VPS deployment используйте:
 
 ```bash
-sudo ./deploy/install-server.sh
+sudo bash deploy/install-server.sh
 ```
 
 Installer автоматически включает TLS-front, systemd restart и health monitor.

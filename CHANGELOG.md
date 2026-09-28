@@ -2,6 +2,18 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.0.2] - 2026-09-27
+
+### Fixed
+
+- installation instructions now invoke the server installer with `bash deploy/install-server.sh`;
+- users no longer need to change the tracked executable bit with `chmod +x`, which could make a later `git pull --ff-only` refuse to update the checkout;
+- installer root error message now shows the same `bash` invocation.
+
+### Compatibility
+
+- no protocol or runtime behavior changes from 1.0.1.
+
 ## [1.0.1] - 2026-09-27
 
 ### Fixed

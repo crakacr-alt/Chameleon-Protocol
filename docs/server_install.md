@@ -10,7 +10,7 @@
 
 ```bash
 cd Chameleon-Protocol
-sudo ./deploy/install-server.sh
+sudo bash deploy/install-server.sh
 ```
 
 Installer сам:
@@ -40,7 +40,7 @@ Installer сам:
 Можно указать порт явно:
 
 ```bash
-sudo CHAMELEON_PORT=9443 ./deploy/install-server.sh
+sudo CHAMELEON_PORT=9443 bash deploy/install-server.sh
 ```
 
 Installer не останавливает и не перенастраивает существующий web server.
@@ -58,7 +58,7 @@ Installer не останавливает и не перенастраивает
 sudo \
   CHAMELEON_TLS_CERT=/etc/letsencrypt/live/example.com/fullchain.pem \
   CHAMELEON_TLS_KEY=/etc/letsencrypt/live/example.com/privkey.pem \
-  ./deploy/install-server.sh
+  bash deploy/install-server.sh
 ```
 
 Исходные certificate files не используются сервисом напрямую: installer
