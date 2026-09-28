@@ -13,9 +13,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -34,10 +34,10 @@ import java.nio.charset.StandardCharsets;
 import mobile.Mobile;
 
 /**
- * Minimal main screen inspired by simple one-button proxy clients.
+ * One-button Android client for the shared Chameleon core.
  *
- * It intentionally exposes only decisions a normal user needs: connect,
- * profile, mode and updates. Transport details stay in the shared adaptive core.
+ * Mode changes are persisted immediately; the user no longer has to import the
+ * profile again after switching Smart/Proxy.
  */
 public final class MainActivity extends Activity {
     private static final int PICK_PROFILE = 2001;
@@ -48,9 +48,11 @@ public final class MainActivity extends Activity {
     private TextView stateText;
     private TextView serverText;
     private TextView detailText;
+    private TextView coexistText;
     private Button powerButton;
     private Spinner modeSpinner;
     private CheckBox autoUpdate;
+    private boolean modeEventsEnabled;
 
     private final Runnable refresh = new Runnable() {
         @Override
@@ -64,6 +66,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(buildUi());
+        restoreModeSelection();
         askNotificationPermission();
         refreshState();
         checkUpdates(false);
@@ -106,10 +109,10 @@ public final class MainActivity extends Activity {
         versionParams.topMargin = dp(6);
         root.addView(version, versionParams);
 
-        TextView coexist = label("● Tailscale совместим • Proxy mode", 13, R.color.success);
+        coexistText = label("", 13, R.color.success);
         LinearLayout.LayoutParams coexistParams = wrap();
         coexistParams.topMargin = dp(20);
-        root.addView(coexist, coexistParams);
+        root.addView(coexistText, coexistParams);
 
         powerButton = new Button(this);
         powerButton.setText("⏻");
@@ -139,8 +142,7 @@ public final class MainActivity extends Activity {
         cardParams.topMargin = dp(26);
         root.addView(card, cardParams);
 
-        TextView serverCaption = label("СЕРВЕР", 11, R.color.textSecondary);
-        card.addView(serverCaption);
+        card.addView(label("СЕРВЕР", 11, R.color.textSecondary));
         serverText = label("Профиль не импортирован", 16, R.color.textPrimary);
         LinearLayout.LayoutParams serverParams = wrap();
         serverParams.topMargin = dp(5);
@@ -162,6 +164,16 @@ public final class MainActivity extends Activity {
                 modes
         );
         modeSpinner.setAdapter(adapter);
+        modeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (modeEventsEnabled) applySelectedMode();
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
         card.addView(modeSpinner, new LinearLayout.LayoutParams(-1, dp(52)));
 
         Button importButton = secondaryButton("Импортировать профиль");
@@ -194,7 +206,7 @@ public final class MainActivity extends Activity {
         root.addView(doctorButton, doctorParams);
 
         TextView note = label(
-                "Этот Android alpha работает как локальный SOCKS5-клиент и не занимает системный VPN-слот. Поэтому Tailscale можно оставить включённым.",
+                "Быстрый запуск Smart доступен из шторки уведомлений, панели быстрых настроек и виджета рабочего стола.",
                 12,
                 R.color.textSecondary
         );
@@ -206,6 +218,46 @@ public final class MainActivity extends Activity {
         return scroll;
     }
 
+    private void restoreModeSelection() {
+        modeEventsEnabled = false;
+        String mode = AppFiles.runtimeMode(this);
+        modeSpinner.setSelection("proxy".equals(mode) ? 1 : 0, false);
+        modeEventsEnabled = true;
+        updateCompatibilityLabel();
+    }
+
+    private String selectedMode() {
+        return modeSpinner.getSelectedItemPosition() == 1 ? "proxy" : "smart";
+    }
+
+    private void applySelectedMode() {
+        String mode = selectedMode();
+        AppFiles.setRuntimeMode(this, mode);
+        updateCompatibilityLabel();
+
+        if (!AppFiles.hasConfig(this)) return;
+
+        try {
+            AppFiles.setCoreMode(this, mode);
+            if (Mobile.running()) {
+                Intent stop = new Intent(this, ChameleonService.class);
+                stop.setAction(ChameleonService.ACTION_STOP);
+                startService(stop);
+                Toast.makeText(this, "Режим изменён. Нажмите подключение снова.", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception error) {
+            Toast.makeText(this, "Не удалось сохранить режим: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void updateCompatibilityLabel() {
+        boolean smart = modeSpinner == null || modeSpinner.getSelectedItemPosition() == 0;
+        coexistText.setText(smart
+                ? "● Другой VPN совместим • Smart mode"
+                : "● Другой VPN несовместим • Proxy mode");
+        coexistText.setTextColor(color(smart ? R.color.success : R.color.danger));
+    }
+
     private void toggleConnection() {
         if (Mobile.running()) {
             Intent stop = new Intent(this, ChameleonService.class);
@@ -213,9 +265,18 @@ public final class MainActivity extends Activity {
             startService(stop);
             return;
         }
+
         if (!AppFiles.hasConfig(this)) {
             Toast.makeText(this, "Сначала импортируйте client-profile.txt", Toast.LENGTH_LONG).show();
             chooseProfile();
+            return;
+        }
+
+        try {
+            AppFiles.setCoreMode(this, selectedMode());
+            AppFiles.setRuntimeMode(this, selectedMode());
+        } catch (Exception error) {
+            Toast.makeText(this, "Ошибка режима: " + error.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -245,19 +306,23 @@ public final class MainActivity extends Activity {
 
         try (InputStream input = getContentResolver().openInputStream(uri)) {
             if (input == null) throw new IllegalStateException("Не удалось открыть файл");
+
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
             for (int read; (read = input.read(buffer)) >= 0; ) {
                 bytes.write(buffer, 0, read);
             }
+
             String profile = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
-            String mode = modeSpinner.getSelectedItemPosition() == 1 ? "proxy" : "smart";
+            String mode = selectedMode();
             String stateDir = new java.io.File(getFilesDir(), "state").getAbsolutePath();
             String config = Mobile.buildConfig(profile, stateDir, mode);
             if (config.startsWith("ERROR:")) {
                 throw new IllegalArgumentException(config.substring("ERROR:".length()).trim());
             }
+
             AppFiles.writeConfig(this, config);
+            AppFiles.setRuntimeMode(this, mode);
             Toast.makeText(this, "Профиль импортирован", Toast.LENGTH_SHORT).show();
             refreshState();
         } catch (Exception error) {
@@ -275,8 +340,11 @@ public final class MainActivity extends Activity {
         stateText.setTextColor(color(running ? R.color.success : R.color.textPrimary));
         powerButton.setBackground(circle(color(running ? R.color.success : R.color.accent)));
         serverText.setText(AppFiles.serverLabel(this));
+        updateCompatibilityLabel();
+
+        String mode = AppFiles.runtimeMode(this);
         detailText.setText(running
-                ? "SOCKS5 127.0.0.1:1080 • сервис активен"
+                ? "SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase() + " активен"
                 : "SOCKS5 127.0.0.1:1080");
     }
 
@@ -285,6 +353,7 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, "Профиль ещё не импортирован", Toast.LENGTH_SHORT).show();
             return;
         }
+
         try {
             String config = AppFiles.readConfig(this);
             String error = Mobile.validateConfig(config);
@@ -296,7 +365,9 @@ public final class MainActivity extends Activity {
                     + "\nРежим: " + mode
                     + "\nProtocol: " + Mobile.version()
                     + "\nSOCKS5: 127.0.0.1:1080"
+                    + "\nListener: " + (Mobile.running() ? "active" : "stopped")
                     : "Ошибка: " + error;
+
             new AlertDialog.Builder(this)
                     .setTitle("Chameleon doctor")
                     .setMessage(message)
@@ -316,14 +387,20 @@ public final class MainActivity extends Activity {
             public void onLoaded(UpdateRepository.Index index) {
                 UpdateRepository.Release latest = index.latestRelease();
                 if (latest == null || !UpdateRepository.isNewer(latest.version, BuildConfig.VERSION_NAME)) {
-                    if (userRequested) Toast.makeText(MainActivity.this, "Установлена актуальная версия", Toast.LENGTH_SHORT).show();
+                    if (userRequested) {
+                        Toast.makeText(MainActivity.this, "Установлена актуальная версия", Toast.LENGTH_SHORT).show();
+                    }
                     return;
                 }
 
                 if (automatic && latest.hasApk()) {
                     long id = UpdateRepository.download(MainActivity.this, latest);
                     if (id > 0) {
-                        Toast.makeText(MainActivity.this, "Обновление " + latest.version + " скачивается", Toast.LENGTH_LONG).show();
+                        Toast.makeText(
+                                MainActivity.this,
+                                "Обновление " + latest.version + " скачивается",
+                                Toast.LENGTH_LONG
+                        ).show();
                         return;
                     }
                 }
@@ -340,15 +417,24 @@ public final class MainActivity extends Activity {
             @Override
             public void onError(Exception error) {
                 if (userRequested) {
-                    Toast.makeText(MainActivity.this, "Не удалось проверить обновления: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Не удалось проверить обновления: " + error.getMessage(),
+                            Toast.LENGTH_LONG
+                    ).show();
                 }
             }
         });
     }
 
     private void askNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_NOTIFICATIONS
+            );
         }
     }
 
@@ -388,10 +474,10 @@ public final class MainActivity extends Activity {
         return new LinearLayout.LayoutParams(-2, -2);
     }
 
-    private GradientDrawable circle(int color) {
+    private GradientDrawable circle(int value) {
         GradientDrawable shape = new GradientDrawable();
         shape.setShape(GradientDrawable.OVAL);
-        shape.setColor(color);
+        shape.setColor(value);
         shape.setStroke(dp(8), Color.argb(45, 255, 255, 255));
         return shape;
     }
