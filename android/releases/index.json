@@ -1,13 +1,31 @@
 {
   "schema": 1,
-  "latest": "1.0.0-alpha.1",
+  "latest": "1.0.0-alpha.2",
   "releases": [
+    {
+      "version": "1.0.0-alpha.2",
+      "protocol": "1.0.2",
+      "date": "2026-09-29",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.2/Chameleon-Android-1.0.0-alpha.2.apk",
+      "sha256": "",
+      "changes": [
+        "Новый значок Chameleon.",
+        "Smart/Proxy переключаются сразу без повторного импорта профиля.",
+        "Строка совместимости больше не привязана к Tailscale.",
+        "Исправлена ложная готовность SOCKS5: listener bind проверяется до статуса подключения.",
+        "Быстрый Smart из постоянного уведомления.",
+        "Плитка Chameleon Smart в быстрых настройках Android.",
+        "Виджет рабочего стола для Smart.",
+        "GitHub auto-update и SHA-256 проверка APK сохранены."
+      ]
+    },
     {
       "version": "1.0.0-alpha.1",
       "protocol": "1.0.0",
       "date": "2026-09-27",
       "min_sdk": 23,
-      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.1/Chameleon-Android-v1.0.0-alpha.1.apk",
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.1/Chameleon-Android-1.0.0-alpha.1.apk",
       "sha256": "d82e46ba4abe0d9d0539ae60b6cd86a25080335f08be554a8e09b92ffa98822a",
       "changes": [
         "Первый открытый Android-клиент Chameleon.",
@@ -21,4 +39,4 @@
       ]
     }
   ]
-}
+}\n
