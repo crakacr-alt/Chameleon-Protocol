@@ -11,6 +11,7 @@ import android.widget.RemoteViews;
 
 import mobile.Mobile;
 
+/** One-tap home-screen widget for Chameleon Smart mode. */
 public final class ChameleonWidget extends AppWidgetProvider {
     private static final String ACTION_TOGGLE = "io.chameleon.android.WIDGET_TOGGLE";
 
@@ -28,8 +29,6 @@ public final class ChameleonWidget extends AppWidgetProvider {
                 Intent open = new Intent(context, MainActivity.class);
                 open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(open);
-            } else if (ChameleonVpnService.running()) {
-                ChameleonVpnService.requestStop(context);
             } else {
                 Intent toggle = new Intent(context, ChameleonService.class);
                 toggle.setAction(ChameleonService.ACTION_SMART_TOGGLE);
@@ -45,12 +44,9 @@ public final class ChameleonWidget extends AppWidgetProvider {
     }
 
     private static RemoteViews views(Context context) {
-        boolean running = Mobile.running() || ChameleonVpnService.running();
+        boolean running = Mobile.running();
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_chameleon);
-        views.setTextViewText(
-                R.id.widget_state,
-                ChameleonVpnService.running() ? "VPN" : (running ? "SMART ON" : "SMART OFF")
-        );
+        views.setTextViewText(R.id.widget_state, running ? "SMART ON" : "SMART OFF");
 
         Intent toggle = new Intent(context, ChameleonWidget.class);
         toggle.setAction(ACTION_TOGGLE);
