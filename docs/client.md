@@ -1,4 +1,4 @@
-# Chameleon 1.0 client
+# Chameleon client
 
 Version 1.0 introduces one user-facing client command:
 
@@ -127,6 +127,14 @@ The loader:
 - validates mode/endpoints/PSK/durations before opening a listener.
 
 Future compatible releases must migrate older schemas explicitly.
+
+## Prebuilt Windows/Linux packages
+
+For users who do not want to install Go and compile from source, official
+amd64/arm64 binaries and verified standalone installers are published by GitHub
+Actions.
+
+See [desktop_clients.md](desktop_clients.md).
 
 ## Linux service installation
 
