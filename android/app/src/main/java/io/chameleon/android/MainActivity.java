@@ -298,6 +298,14 @@ public final class MainActivity extends Activity {
 
         String mode = selectedMode();
         if ("vpn".equals(mode)) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                Toast.makeText(
+                        this,
+                        "VPN mode требует Android 10 или новее; Smart/Proxy работают с Android 6+",
+                        Toast.LENGTH_LONG
+                ).show();
+                return;
+            }
             Intent permission = VpnService.prepare(this);
             if (permission != null) {
                 startActivityForResult(permission, REQUEST_VPN);
