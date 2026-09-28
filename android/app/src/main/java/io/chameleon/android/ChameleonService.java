@@ -12,10 +12,10 @@ import android.os.IBinder;
 import mobile.Mobile;
 
 /**
- * Foreground owner for the local SOCKS sidecar.
+ * Foreground owner for the local Chameleon SOCKS runtime.
  *
- * Smart and Proxy sidecar modes do not claim Android's VpnService slot.
- * ChameleonVpnService owns the optional full-device TUN mode.
+ * The quick action always selects Smart mode before starting, so the user gets
+ * predictable one-tap behaviour without re-importing the profile.
  */
 public final class ChameleonService extends Service {
     static final String ACTION_START = "io.chameleon.android.START";
@@ -49,27 +49,24 @@ public final class ChameleonService extends Service {
 
         try {
             if (ACTION_SMART_TOGGLE.equals(action)) {
-                if (ChameleonVpnService.running()) {
-                    ChameleonVpnService.requestStop(this);
-                }
                 AppFiles.forceSmart(this);
             }
 
             String config = AppFiles.readConfig(this);
             String error = Mobile.start(config);
             if (error != null && !error.isEmpty()) {
-                notifyState("Ошибка: " + error, false);
+                notifyState("Ошибка: " + error);
                 stopSelf();
                 return START_NOT_STICKY;
             }
 
             String mode = AppFiles.coreMode(this);
-            notifyState("Подключено • " + mode.toUpperCase() + " • SOCKS5 127.0.0.1:1080", true);
+            notifyState("Подключено • " + mode.toUpperCase() + " • SOCKS5 127.0.0.1:1080");
             ChameleonWidget.updateAll(this);
             ChameleonTile.requestRefresh(this);
             return START_STICKY;
         } catch (Exception error) {
-            notifyState("Ошибка профиля: " + error.getMessage(), false);
+            notifyState("Ошибка профиля: " + error.getMessage());
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -139,9 +136,8 @@ public final class ChameleonService extends Service {
                 .build();
     }
 
-    private void notifyState(String text, boolean ongoing) {
+    private void notifyState(String text) {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        Notification note = notification(text);
-        manager.notify(NOTIFICATION_ID, note);
+        manager.notify(NOTIFICATION_ID, notification(text));
     }
 }
