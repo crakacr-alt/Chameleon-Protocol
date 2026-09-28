@@ -109,7 +109,7 @@ private key нельзя хранить в открытом репозитори
 
 ## Supported Android
 
-Alpha.2:
+Alpha.3:
 
 ```text
 minSdk 23 = Android 6.0+
@@ -122,7 +122,6 @@ targetSdk 35
 
 ## Что ещё не заявляется готовым
 
-- system-wide `VpnService` / TUN data path;
 - per-app routing;
 - transparent routing всего телефона;
 - одновременный Chameleon VpnService + Tailscale VpnService;
