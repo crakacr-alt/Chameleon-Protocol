@@ -16,6 +16,7 @@ import (
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientapp"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientconfig"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/control"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/networkctx"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/probe"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
@@ -68,7 +69,7 @@ func usage() {
 
 Usage:
   chameleon import PROFILE [--config PATH] [--mode smart|proxy]
-  chameleon connect [--config PATH]
+  chameleon connect [--config PATH] [--control 127.0.0.1:8765]
   chameleon status [--config PATH]
   chameleon doctor [--config PATH] [--json]
   chameleon show [--config PATH]
@@ -118,6 +119,7 @@ func runImport(args []string) {
 func runConnect(args []string) {
 	fs := flag.NewFlagSet("connect", flag.ExitOnError)
 	configPath := fs.String("config", defaultConfigPath(), "config path")
+	controlAddress := fs.String("control", "127.0.0.1:8765", "localhost control API / desktop panel")
 	if err := fs.Parse(args); err != nil {
 		exitErr(err)
 	}
@@ -134,9 +136,33 @@ func runConnect(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	fmt.Printf("Chameleon %s mode=%s SOCKS5=%s\n", buildversion.Current, cfg.Mode, cfg.Listen)
-	if err := app.ListenAndServe(ctx); err != nil {
-		exitErr(err)
+	controlServer := &control.Server{
+		Runtime:    app,
+		ConfigPath: *configPath,
+	}
+	controlErr := make(chan error, 1)
+	go func() {
+		controlErr <- controlServer.Serve(ctx, *controlAddress)
+	}()
+
+	fmt.Printf("Chameleon %s mode=%s preset=%s SOCKS5=%s\n", buildversion.Current, cfg.Mode, cfg.Preset, cfg.Listen)
+	fmt.Printf("Desktop panel: http://%s/\n", *controlAddress)
+
+	clientErr := make(chan error, 1)
+	go func() {
+		clientErr <- app.ListenAndServe(ctx)
+	}()
+
+	select {
+	case err := <-clientErr:
+		if err != nil {
+			exitErr(err)
+		}
+	case err := <-controlErr:
+		if err != nil {
+			exitErr(fmt.Errorf("control server: %w", err))
+		}
+	case <-ctx.Done():
 	}
 }
 
