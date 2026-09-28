@@ -10,11 +10,8 @@ android {
         applicationId "io.chameleon.android"
         minSdk 23
         targetSdk 35
-        versionCode 100001
-        versionName "1.0.0-alpha.1"
-
-        // Keep the APK universal for the first public alpha. The embedded AAR
-        // supplies the Android-native Go libraries built by gomobile.
+        versionCode 100002
+        versionName "1.0.0-alpha.2"
     }
 
     signingConfigs {
@@ -61,4 +58,5 @@ android {
 
 dependencies {
     implementation files("libs/chameleon.aar")
+    implementation files("libs/hev-socks5-tunnel.aar")
 }
