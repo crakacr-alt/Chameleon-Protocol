@@ -363,6 +363,15 @@ SHA-256 проверка APK. Финальную установку Android вс
 
 Подробнее: [docs/android.md](docs/android.md)
 
+### Windows / Linux packaged clients
+
+GitHub Actions now builds open-source amd64/arm64 clients for Windows and Linux,
+publishes `SHA256SUMS`, and includes standalone installers. Linux uses a
+systemd service + daily verified updater; Windows uses startup/update Scheduled
+Tasks and verifies the downloaded executable before installation.
+
+Подробнее: [docs/desktop_clients.md](docs/desktop_clients.md)
+
 ### Chameleon 1.0 client
 
 Обычный клиентский сценарий теперь не требует ручной настройки transport flags:
