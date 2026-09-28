@@ -1,6 +1,7 @@
 package io.chameleon.android;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import org.json.JSONObject;
 
@@ -11,18 +12,22 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Centralizes private app files.
- *
- * The Chameleon config contains a PSK, so it is deliberately kept inside the
- * Android application sandbox and never written to shared Downloads storage.
+ * Centralizes private app state. The JSON config contains the tunnel PSK and
+ * therefore never leaves the Android application sandbox.
  */
 final class AppFiles {
     private static final String CONFIG_FILE = "client.json";
+    private static final String PREFS = "chameleon_ui";
+    private static final String KEY_RUNTIME_MODE = "runtime_mode";
 
     private AppFiles() {}
 
     static File configFile(Context context) {
         return new File(context.getFilesDir(), CONFIG_FILE);
+    }
+
+    static File tunConfigFile(Context context) {
+        return new File(context.getFilesDir(), "tun2socks.yml");
     }
 
     static boolean hasConfig(Context context) {
@@ -45,6 +50,35 @@ final class AppFiles {
             output.write(config.getBytes(StandardCharsets.UTF_8));
             output.flush();
         }
+    }
+
+    static String coreMode(Context context) {
+        try {
+            return new JSONObject(readConfig(context)).optString("mode", "smart");
+        } catch (Exception ignored) {
+            return "smart";
+        }
+    }
+
+    static void setCoreMode(Context context, String mode) throws Exception {
+        JSONObject json = new JSONObject(readConfig(context));
+        json.put("mode", mode);
+        writeConfig(context, json.toString(2) + "\n");
+    }
+
+    static String runtimeMode(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return prefs.getString(KEY_RUNTIME_MODE, coreMode(context));
+    }
+
+    static void setRuntimeMode(Context context, String mode) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY_RUNTIME_MODE, mode).apply();
+    }
+
+    static void forceSmart(Context context) throws Exception {
+        setRuntimeMode(context, "smart");
+        setCoreMode(context, "smart");
     }
 
     static String serverLabel(Context context) {
