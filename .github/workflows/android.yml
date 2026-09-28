@@ -78,6 +78,21 @@ jobs:
             -o android/app/libs/chameleon.aar \
             ./mobile
 
+      - name: Fetch pinned open-source tun2socks AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/libs
+          url="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.18.0/hev-socks5-tunnel.aar"
+          expected="15ec8ed121663b562c99caa5bb602d1009f24e5b09e733438b81988f12feaaab"
+          out="android/app/libs/hev-socks5-tunnel.aar"
+          curl -fL --retry 3 "$url" -o "$out"
+          actual="$(sha256sum "$out" | awk '{print $1}')"
+          test "$actual" = "$expected" || {
+            echo "hev-socks5-tunnel AAR checksum mismatch" >&2
+            exit 1
+          }
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
