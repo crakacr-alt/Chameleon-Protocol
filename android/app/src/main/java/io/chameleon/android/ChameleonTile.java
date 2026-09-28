@@ -28,6 +28,12 @@ public final class ChameleonTile extends TileService {
             return;
         }
 
+        if (ChameleonVpnService.running()) {
+            ChameleonVpnService.requestStop(this);
+            refresh();
+            return;
+        }
+
         Intent toggle = new Intent(this, ChameleonService.class);
         toggle.setAction(ChameleonService.ACTION_SMART_TOGGLE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !Mobile.running()) {
@@ -41,9 +47,10 @@ public final class ChameleonTile extends TileService {
     private void refresh() {
         Tile tile = getQsTile();
         if (tile == null) return;
-        boolean running = Mobile.running();
+        boolean vpn = ChameleonVpnService.running();
+        boolean running = Mobile.running() || vpn;
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setLabel("Chameleon Smart");
+        tile.setLabel(vpn ? "Chameleon VPN" : "Chameleon Smart");
         tile.updateTile();
     }
 

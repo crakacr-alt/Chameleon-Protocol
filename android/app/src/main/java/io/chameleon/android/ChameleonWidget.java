@@ -29,6 +29,8 @@ public final class ChameleonWidget extends AppWidgetProvider {
                 Intent open = new Intent(context, MainActivity.class);
                 open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(open);
+            } else if (ChameleonVpnService.running()) {
+                ChameleonVpnService.requestStop(context);
             } else {
                 Intent toggle = new Intent(context, ChameleonService.class);
                 toggle.setAction(ChameleonService.ACTION_SMART_TOGGLE);
@@ -44,9 +46,13 @@ public final class ChameleonWidget extends AppWidgetProvider {
     }
 
     private static RemoteViews views(Context context) {
-        boolean running = Mobile.running();
+        boolean vpn = ChameleonVpnService.running();
+        boolean running = Mobile.running() || vpn;
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_chameleon);
-        views.setTextViewText(R.id.widget_state, running ? "SMART ON" : "SMART OFF");
+        views.setTextViewText(
+                R.id.widget_state,
+                vpn ? "VPN ON" : (running ? "SMART ON" : "SMART OFF")
+        );
 
         Intent toggle = new Intent(context, ChameleonWidget.class);
         toggle.setAction(ACTION_TOGGLE);

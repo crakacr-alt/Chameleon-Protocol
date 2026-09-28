@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -42,6 +43,7 @@ import mobile.Mobile;
 public final class MainActivity extends Activity {
     private static final int PICK_PROFILE = 2001;
     private static final int REQUEST_NOTIFICATIONS = 2002;
+    private static final int REQUEST_VPN = 2003;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -156,7 +158,8 @@ public final class MainActivity extends Activity {
         modeSpinner = new Spinner(this);
         String[] modes = {
                 "Smart — direct + Chameleon",
-                "Proxy — только Chameleon"
+                "Proxy — только Chameleon",
+                "VPN — весь телефон через Chameleon"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this,
@@ -221,13 +224,17 @@ public final class MainActivity extends Activity {
     private void restoreModeSelection() {
         modeEventsEnabled = false;
         String mode = AppFiles.runtimeMode(this);
-        modeSpinner.setSelection("proxy".equals(mode) ? 1 : 0, false);
+        int position = "vpn".equals(mode) ? 2 : ("proxy".equals(mode) ? 1 : 0);
+        modeSpinner.setSelection(position, false);
         modeEventsEnabled = true;
         updateCompatibilityLabel();
     }
 
     private String selectedMode() {
-        return modeSpinner.getSelectedItemPosition() == 1 ? "proxy" : "smart";
+        int position = modeSpinner.getSelectedItemPosition();
+        if (position == 2) return "vpn";
+        if (position == 1) return "proxy";
+        return "smart";
     }
 
     private void applySelectedMode() {
@@ -238,8 +245,13 @@ public final class MainActivity extends Activity {
         if (!AppFiles.hasConfig(this)) return;
 
         try {
-            AppFiles.setCoreMode(this, mode);
-            if (Mobile.running()) {
+            String coreMode = "vpn".equals(mode) ? "proxy" : mode;
+            AppFiles.setCoreMode(this, coreMode);
+
+            if (ChameleonVpnService.running()) {
+                ChameleonVpnService.requestStop(this);
+                Toast.makeText(this, "VPN остановлен. Нажмите подключение снова.", Toast.LENGTH_SHORT).show();
+            } else if (Mobile.running()) {
                 Intent stop = new Intent(this, ChameleonService.class);
                 stop.setAction(ChameleonService.ACTION_STOP);
                 startService(stop);
@@ -251,14 +263,26 @@ public final class MainActivity extends Activity {
     }
 
     private void updateCompatibilityLabel() {
-        boolean smart = modeSpinner == null || modeSpinner.getSelectedItemPosition() == 0;
-        coexistText.setText(smart
-                ? "● Другой VPN совместим • Smart mode"
-                : "● Другой VPN несовместим • Proxy mode");
+        int position = modeSpinner == null ? 0 : modeSpinner.getSelectedItemPosition();
+        boolean smart = position == 0;
+        String label;
+        if (smart) {
+            label = "● Другой VPN совместим • только Smart";
+        } else if (position == 2) {
+            label = "● Другой VPN несовместим • системный VPN";
+        } else {
+            label = "● Другой VPN несовместим • Proxy mode";
+        }
+        coexistText.setText(label);
         coexistText.setTextColor(color(smart ? R.color.success : R.color.danger));
     }
 
     private void toggleConnection() {
+        if (ChameleonVpnService.running()) {
+            ChameleonVpnService.requestStop(this);
+            return;
+        }
+
         if (Mobile.running()) {
             Intent stop = new Intent(this, ChameleonService.class);
             stop.setAction(ChameleonService.ACTION_STOP);
@@ -272,9 +296,28 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        String mode = selectedMode();
+        if ("vpn".equals(mode)) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                Toast.makeText(
+                        this,
+                        "VPN mode требует Android 10 или новее; Smart/Proxy работают с Android 6+",
+                        Toast.LENGTH_LONG
+                ).show();
+                return;
+            }
+            Intent permission = VpnService.prepare(this);
+            if (permission != null) {
+                startActivityForResult(permission, REQUEST_VPN);
+            } else {
+                startVpn();
+            }
+            return;
+        }
+
         try {
-            AppFiles.setCoreMode(this, selectedMode());
-            AppFiles.setRuntimeMode(this, selectedMode());
+            AppFiles.setCoreMode(this, mode);
+            AppFiles.setRuntimeMode(this, mode);
         } catch (Exception error) {
             Toast.makeText(this, "Ошибка режима: " + error.getMessage(), Toast.LENGTH_LONG).show();
             return;
@@ -282,6 +325,24 @@ public final class MainActivity extends Activity {
 
         Intent start = new Intent(this, ChameleonService.class);
         start.setAction(ChameleonService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(start);
+        } else {
+            startService(start);
+        }
+    }
+
+    private void startVpn() {
+        try {
+            AppFiles.setRuntimeMode(this, "vpn");
+            AppFiles.setCoreMode(this, "proxy");
+        } catch (Exception error) {
+            Toast.makeText(this, "Ошибка VPN режима: " + error.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Intent start = new Intent(this, ChameleonVpnService.class);
+        start.setAction(ChameleonVpnService.ACTION_START);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(start);
         } else {
@@ -299,6 +360,16 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == REQUEST_VPN) {
+            if (resultCode == RESULT_OK) {
+                startVpn();
+            } else {
+                Toast.makeText(this, "Разрешение VPN не выдано", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+
         if (requestCode != PICK_PROFILE || resultCode != RESULT_OK || data == null) return;
 
         Uri uri = data.getData();
@@ -315,8 +386,9 @@ public final class MainActivity extends Activity {
 
             String profile = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
             String mode = selectedMode();
+            String coreMode = "vpn".equals(mode) ? "proxy" : mode;
             String stateDir = new java.io.File(getFilesDir(), "state").getAbsolutePath();
-            String config = Mobile.buildConfig(profile, stateDir, mode);
+            String config = Mobile.buildConfig(profile, stateDir, coreMode);
             if (config.startsWith("ERROR:")) {
                 throw new IllegalArgumentException(config.substring("ERROR:".length()).trim());
             }
@@ -335,17 +407,24 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshState() {
-        boolean running = Mobile.running();
-        stateText.setText(running ? "Подключено" : "Отключено");
+        boolean vpn = ChameleonVpnService.running();
+        boolean sidecar = Mobile.running() && !vpn;
+        boolean running = vpn || sidecar;
+
+        stateText.setText(vpn ? "VPN подключён" : (sidecar ? "Подключено" : "Отключено"));
         stateText.setTextColor(color(running ? R.color.success : R.color.textPrimary));
         powerButton.setBackground(circle(color(running ? R.color.success : R.color.accent)));
         serverText.setText(AppFiles.serverLabel(this));
         updateCompatibilityLabel();
 
         String mode = AppFiles.runtimeMode(this);
-        detailText.setText(running
-                ? "SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase() + " активен"
-                : "SOCKS5 127.0.0.1:1080");
+        if (vpn) {
+            detailText.setText("VPN/TUN • весь телефон • SOCKS5 127.0.0.1:1080");
+        } else if (sidecar) {
+            detailText.setText("SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase() + " активен");
+        } else {
+            detailText.setText("SOCKS5 127.0.0.1:1080");
+        }
     }
 
     private void showDiagnostics() {
@@ -366,6 +445,7 @@ public final class MainActivity extends Activity {
                     + "\nProtocol: " + Mobile.version()
                     + "\nSOCKS5: 127.0.0.1:1080"
                     + "\nListener: " + (Mobile.running() ? "active" : "stopped")
+                    + "\nSystem VPN: " + (ChameleonVpnService.running() ? "active" : "stopped")
                     : "Ошибка: " + error;
 
             new AlertDialog.Builder(this)

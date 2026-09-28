@@ -2,6 +2,28 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.0-alpha.3] - 2026-09-29
+
+### Added
+
+- full-device Android VpnService mode with IPv4/IPv6 TUN;
+- TUN-to-SOCKS data path through pinned open-source hev-socks5-tunnel 2.18.0;
+- SHA-256 verification of the external AAR in Android CI;
+- dedicated VPN foreground notification and stop action;
+- VPN-aware Quick Settings tile and home-screen widget state.
+
+### Changed
+
+- VPN mode uses Chameleon Proxy core so captured traffic has no direct carrier fallback;
+- Smart remains the external-VPN-compatible sidecar mode;
+- alpha.2 APK checksum is restored in the public update index.
+
+### Compatibility
+
+- Android 6.0+ remains the minimum;
+- protocol core remains 1.0.2;
+- Android allows only one independent active VpnService, so Chameleon VPN mode cannot coexist with another Android VPN service.
+
 ## [1.0.2] - 2026-09-27
 
 ### Fixed

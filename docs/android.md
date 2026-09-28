@@ -42,15 +42,61 @@ Android UI / Foreground Service
 SOCKS5 127.0.0.1:1080
 ```
 
-## Tailscale
+## Режимы
 
-Версия `1.0.0-alpha.1` намеренно не объявляет Android `VpnService`.
+### Smart
 
-Поэтому системный VPN slot остаётся свободным для Tailscale. Chameleon работает
-как локальный proxy sidecar.
+`Smart — direct + Chameleon` работает как локальный SOCKS5 sidecar. Он не
+занимает Android `VpnService`, поэтому может использоваться рядом с другим
+активным VPN. Adaptive core может выбрать direct или Chameleon carrier.
 
-Android обычно не позволяет одновременно держать два независимых VpnService,
-поэтому будущий system-wide режим будет optional, а Proxy mode останется.
+### Proxy
+
+`Proxy — только Chameleon` тоже остаётся локальным SOCKS5 sidecar, но direct
+TCP carrier исключён. Этот режим нужен для принудительной проверки маршрута
+через Chameleon.
+
+### VPN — весь телефон
+
+Начиная с Android `1.0.0-alpha.3` приложение умеет создавать настоящий
+системный IPv4/IPv6 TUN через Android `VpnService`.
+
+Путь:
+
+```text
+приложения Android
+       |
+       v
+Android TUN
+       |
+       v
+hev-socks5-tunnel 2.18.0
+       |
+       v
+SOCKS5 127.0.0.1:1080
+       |
+       v
+общий Chameleon Go core (Proxy)
+       |
+       v
+QUIC / TLS / TCP -> Chameleon server
+```
+
+Chameleon исключает собственный package из своего TUN, чтобы upstream sockets
+не попадали обратно в VPN и не создавали routing loop.
+
+VPN mode использует Proxy core: трафик, уже захваченный системным TUN, не
+получает direct fallback.
+
+Android допускает только один независимый активный `VpnService`. Поэтому
+другой системный VPN совместим с Chameleon **только в Smart sidecar mode**.
+
+Приложение в целом поддерживает Android 6.0+ (API 23), но VPN/TUN mode в
+alpha.3 требует Android 10+ (API 29), поскольку закреплённый upstream
+hev-socks5-tunnel 2.18.0 собран с `APP_PLATFORM=android-29`.
+
+Quick Settings tile, действие в уведомлении и виджет рабочего стола служат
+быстрым включением/выключением Smart.
 
 ## Обновления
 
@@ -109,10 +155,11 @@ private key нельзя хранить в открытом репозитори
 
 ## Supported Android
 
-Alpha.2:
+Alpha.3:
 
 ```text
-minSdk 23 = Android 6.0+
+App minSdk 23 = Android 6.0+
+VPN/TUN mode = Android 10+ / API 29
 targetSdk 35
 ```
 
@@ -122,9 +169,7 @@ targetSdk 35
 
 ## Что ещё не заявляется готовым
 
-- system-wide `VpnService` / TUN data path;
 - per-app routing;
-- transparent routing всего телефона;
 - одновременный Chameleon VpnService + Tailscale VpnService;
 - Android TV UI polish;
 - Play Store distribution;
