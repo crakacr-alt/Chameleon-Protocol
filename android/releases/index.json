@@ -16,8 +16,10 @@
         "Pinned hev-socks5-tunnel 2.18.0 AAR с SHA-256 проверкой в CI.",
         "Отдельное VPN уведомление с быстрым отключением.",
         "Smart остаётся режимом совместимости с другим Android VPN.",
-        "В release index добавлена пропущенная SHA-256 alpha.2."
-      ]
+        "В release index добавлена пропущенная SHA-256 alpha.2.",
+        "VPN/TUN mode требует Android 10+; Smart/Proxy работают с Android 6+."
+      ],
+      "vpn_min_sdk": 29
     },
     {
       "version": "1.0.0-alpha.2",
