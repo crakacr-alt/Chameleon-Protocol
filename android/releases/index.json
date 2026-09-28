@@ -8,7 +8,7 @@
       "date": "2026-09-29",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.3/Chameleon-Android-1.0.0-alpha.3.apk",
-      "sha256": "",
+      "sha256": "68cbe9c589f023d9e675f6c785e8ce5af25024f842412978410bd30fdec033c4",
       "changes": [
         "Полноценный системный VPN/TUN режим для всего Android.",
         "IPv4/IPv6 TUN -> open-source tun2socks -> общий Chameleon SOCKS/core.",
