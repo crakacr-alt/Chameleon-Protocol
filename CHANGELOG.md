@@ -2,6 +2,28 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.0.3] - 2026-09-29
+
+### Added
+
+- open-source prebuilt Windows and Linux client packages for amd64 and arm64;
+- SHA-256 verified standalone desktop installers and automatic update jobs;
+- two-server WireGuard ingress/relay deployment that forwards both TCP/TLS and UDP/QUIC;
+- generated relay client profile that keeps the original exit PSK and TLS pin while pointing clients at the reachable ingress;
+- restricted reverse-SSH relay remains available as a simple TCP-only fallback.
+
+### Changed
+
+- the preferred blocked-exit topology is now client -> reachable ingress -> private WireGuard link -> original Chameleon exit;
+- desktop packaging, Android and server deployments continue to use the same Chameleon wire protocol and shared client core.
+
+### Compatibility
+
+- wire protocol is unchanged from 1.0.2;
+- existing 1.0.x client profiles remain valid;
+- Android 1.0.0-alpha.3 embeds the compatible 1.0.2 core and can use a 1.0.3 relay profile;
+- adding a relay improves reachability and redundancy, but does not guarantee lower latency or higher single-flow throughput.
+
 ## [Android 1.0.0-alpha.3] - 2026-09-29
 
 ### Added
