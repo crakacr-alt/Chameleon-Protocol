@@ -1,7 +1,25 @@
 {
   "schema": 1,
-  "latest": "1.0.0-alpha.4",
+  "latest": "1.0.0-alpha.5",
   "releases": [
+    {
+      "version": "1.0.0-alpha.5",
+      "protocol": "1.0.6",
+      "date": "2026-09-30",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.5/Chameleon-Android-1.0.0-alpha.5.apk",
+      "sha256": "",
+      "changes": [
+        "VPN перед запуском TUN проверяет реальный удалённый Chameleon transport и выбирает доступный TCP путь.",
+        "TLS ingress автоматически пробуется на стандартном TCP/443, если нестандартный профильный порт недоступен.",
+        "При блокировке QUIC системный DNS переносится через Chameleon TCP/TLS как DNS-over-TCP без direct UDP leak.",
+        "Исправлен ложный QUIC doctor: финальный authenticated status больше не теряется из-за раннего закрытия QUIC connection.",
+        "Doctor показывает реальную удалённую доступность, выбранный TCP transport и UDP fallback.",
+        "TUN MTU снижен до 1400 для мобильных сетей и relay/WireGuard топологии.",
+        "Protocol/client core 1.0.6; wire format совместим с Server 1.0.x."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.0.0-alpha.4",
       "protocol": "1.0.5",

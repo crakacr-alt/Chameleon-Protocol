@@ -208,8 +208,22 @@ type quicStreamConn struct {
 func (c *quicStreamConn) Close() error {
 	var streamErr error
 	c.closeOnce.Do(func() {
+		// Closing the QUIC connection immediately after Stream.Close can race
+		// the stream FIN / final encrypted Chameleon status. That made the
+		// authenticated QUIC doctor report false failures even while real QUIC
+		// sessions worked. Give quic-go a short grace period to flush the stream
+		// before retiring this one-stream connection.
 		streamErr = c.Stream.Close()
-		_ = c.conn.CloseWithError(0, "")
+		conn := c.conn
+		go func() {
+			timer := time.NewTimer(150 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-conn.Context().Done():
+			case <-timer.C:
+				_ = conn.CloseWithError(0, "")
+			}
+		}()
 	})
 	return streamErr
 }

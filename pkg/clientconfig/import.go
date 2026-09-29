@@ -39,6 +39,10 @@ func ImportProfile(r io.Reader) (Config, error) {
 			cfg.TLSFingerprint = value
 		case "CHAMELEON_TLS_SERVER_NAME":
 			cfg.TLSServerName = value
+		case "CHAMELEON_TCP_TRANSPORT":
+			cfg.TCPTransport = value
+		case "CHAMELEON_UDP_MODE":
+			cfg.UDPMode = value
 		}
 	}
 	if err := scanner.Err(); err != nil {

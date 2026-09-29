@@ -2,6 +2,42 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.0-alpha.5] - 2026-09-30
+
+### Fixed
+
+- full-device VPN now performs a real remote Chameleon transport preflight before marking the tunnel usable;
+- Android can prefer a reachable standard TLS ingress on TCP/443 when the profile's nonstandard public port is filtered;
+- proxy-mode UDP auto no longer makes DNS completely dependent on QUIC availability: when QUIC is blocked, DNS is carried through the selected Chameleon TCP/TLS stream using DNS-over-TCP framing;
+- non-DNS UDP is never sent directly by that fallback, preserving leak-resistant Proxy/VPN behavior;
+- QUIC stream shutdown now gives the final encrypted status time to flush, fixing false authenticated QUIC doctor failures;
+- Android Doctor now verifies remote reachability and reports the selected TCP transport plus UDP fallback;
+- Android TUN MTU is reduced to 1400 for mobile + relay/WireGuard paths.
+
+### Changed
+
+- Android alpha.5 embeds protocol/client core 1.0.6;
+- config schema remains v1 and existing profiles remain compatible;
+- new optional profile keys: `CHAMELEON_TCP_TRANSPORT` and `CHAMELEON_UDP_MODE`.
+
+### Compatibility
+
+- wire protocol is unchanged from 1.0.x;
+- existing Server 1.0.x deployments remain compatible;
+- existing Android private config/PSK survives the APK update.
+
+## [1.0.6] - 2026-09-30
+
+### Fixed
+
+- authenticated QUIC probe no longer races connection teardown;
+- proxy-mode UDP auto adds a leak-resistant DNS-over-TCP fallback when QUIC datagrams are unavailable;
+- transport preferences can be imported from generated profiles.
+
+### Compatibility
+
+- no Chameleon wire-format change from 1.0.5.
+
 ## [Android 1.0.0-alpha.4] - 2026-09-29
 
 ### Fixed
