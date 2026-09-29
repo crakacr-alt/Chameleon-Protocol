@@ -71,6 +71,10 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 	if cfg.Mode == clientconfig.ModeProxy {
 		candidates = withoutDirect(candidates)
 	}
+	candidates, err = selectTCPCarriers(candidates, cfg.TCPTransport)
+	if err != nil {
+		return err
+	}
 
 	tlsCfg := tunnel.TLSClientConfig{
 		ServerName:   cfg.TLSServerName,
@@ -87,6 +91,7 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 		DirectCooldown:           cfg.DirectCooldown.Duration(),
 		ApplicationFailureWindow: cfg.FailureWindow.Duration(),
 		Network:                  networkctx.Detect,
+		DisableInitialRace:       strings.ToLower(strings.TrimSpace(cfg.TCPTransport)) != "auto",
 	}
 
 	dial := adaptive.DialContext
@@ -163,6 +168,36 @@ func withoutDirect(candidates []carrier.Candidate) []carrier.Candidate {
 	return out
 }
 
+func selectTCPCarriers(candidates []carrier.Candidate, transport string) ([]carrier.Candidate, error) {
+	switch strings.ToLower(strings.TrimSpace(transport)) {
+	case "", "auto":
+		return candidates, nil
+	case "tls":
+		for _, candidate := range candidates {
+			if candidate.Kind == carrier.KindChameleonTLS {
+				return []carrier.Candidate{candidate}, nil
+			}
+		}
+		return nil, fmt.Errorf("tcp_transport=tls but tls_server is not configured")
+	case "quic":
+		for _, candidate := range candidates {
+			if candidate.Kind == carrier.KindChameleonQUIC {
+				return []carrier.Candidate{candidate}, nil
+			}
+		}
+		return nil, fmt.Errorf("tcp_transport=quic but quic_server is not configured")
+	case "tcp":
+		for _, candidate := range candidates {
+			if candidate.Kind == carrier.KindChameleonTCP {
+				return []carrier.Candidate{candidate}, nil
+			}
+		}
+		return nil, fmt.Errorf("tcp_transport=tcp but tcp_server is not configured")
+	default:
+		return nil, fmt.Errorf("unsupported tcp_transport %q", transport)
+	}
+}
+
 func adaptiveStateScope(cfg clientconfig.Config) string {
 	identity := strings.Join([]string{
 		strings.TrimSpace(cfg.Server),
@@ -171,6 +206,7 @@ func adaptiveStateScope(cfg clientconfig.Config) string {
 		strings.TrimSpace(cfg.TCPServer),
 		strings.TrimSpace(cfg.TLSFingerprint),
 		strings.TrimSpace(cfg.TLSServerName),
+		strings.TrimSpace(cfg.TCPTransport),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(identity))
 	return hex.EncodeToString(sum[:8])
