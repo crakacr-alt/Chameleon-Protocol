@@ -15,6 +15,8 @@ CHAMELEON_QUIC_SERVER=server.example:443
 CHAMELEON_TLS_SERVER=server.example:443
 CHAMELEON_TUNNEL_PSK=0123456789abcdef
 CHAMELEON_TLS_FINGERPRINT=aabbcc
+CHAMELEON_TCP_TRANSPORT=tls
+CHAMELEON_UDP_MODE=auto
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -24,6 +26,9 @@ CHAMELEON_TLS_FINGERPRINT=aabbcc
 	}
 	if cfg.PSK != "0123456789abcdef" {
 		t.Fatal("PSK not imported")
+	}
+	if cfg.TCPTransport != "tls" || cfg.UDPMode != "auto" {
+		t.Fatalf("transport preferences not imported: tcp=%q udp=%q", cfg.TCPTransport, cfg.UDPMode)
 	}
 }
 
