@@ -199,7 +199,6 @@ func splitPairs(s string) []string {
 	return out
 }
 
-
 func TestTLSClientConfigUsesCompactCurvePreferences(t *testing.T) {
 	cfg, err := buildTLSClientConfig("127.0.0.1:443", TLSClientConfig{InsecureSkipVerify: true})
 	if err != nil {
