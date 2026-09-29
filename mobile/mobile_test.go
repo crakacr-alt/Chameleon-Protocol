@@ -1,8 +1,11 @@
 package mobile
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientconfig"
 )
 
 func TestBuildConfigFromServerProfile(t *testing.T) {
@@ -26,5 +29,32 @@ func TestRejectUnknownMode(t *testing.T) {
 	got := BuildConfig("", "", "mystery")
 	if !strings.HasPrefix(got, "ERROR:") {
 		t.Fatalf("expected error, got %q", got)
+	}
+}
+
+
+func TestRuntimeOwnerPreventsStaleStop(t *testing.T) {
+	cfg := clientconfig.Default()
+	cfg.Listen = "127.0.0.1:0"
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := StartOwned(string(data), "sidecar"); got != "" {
+		t.Fatal(got)
+	}
+	if Owner() != "sidecar" || !Running() || !ListenerReady() {
+		t.Fatal("sidecar runtime did not become ready")
+	}
+
+	StopOwned("vpn")
+	if !Running() || Owner() != "sidecar" {
+		t.Fatal("stale owner stopped the active runtime")
+	}
+
+	StopOwned("sidecar")
+	if Running() || Owner() != "" {
+		t.Fatal("sidecar runtime did not stop")
 	}
 }
