@@ -8,6 +8,7 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/carrier"
@@ -105,24 +106,57 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 		}
 	}
 
+	var (
+		udpMu               sync.Mutex
+		quicUnavailableTill time.Time
+	)
+
 	openUDP := func(ctx context.Context) (socks5.UDPAssociation, error) {
 		mode := strings.ToLower(strings.TrimSpace(cfg.UDPMode))
-		if cfg.Mode == clientconfig.ModeProxy && mode == "auto" {
-			mode = "quic"
-		}
 		switch mode {
 		case "direct":
 			return socks5.NewDirectUDPAssociation(ctx, 8*time.Second), nil
+
 		case "quic":
 			if cfg.QUICServer == "" {
 				return nil, fmt.Errorf("QUIC UDP requested but quic_server is empty")
 			}
-			return tunnel.DialQUICDatagramSession(ctx, cfg.QUICServer, cfg.PSK, 8*time.Second, tlsCfg)
+			return tunnel.DialQUICDatagramSession(ctx, cfg.QUICServer, cfg.PSK, 5*time.Second, tlsCfg)
+
 		case "auto":
 			if cfg.QUICServer != "" {
-				return tunnel.DialQUICDatagramSession(ctx, cfg.QUICServer, cfg.PSK, 8*time.Second, tlsCfg)
+				udpMu.Lock()
+				blocked := time.Now().Before(quicUnavailableTill)
+				udpMu.Unlock()
+
+				if !blocked {
+					association, err := tunnel.DialQUICDatagramSession(
+						ctx, cfg.QUICServer, cfg.PSK, 3*time.Second, tlsCfg,
+					)
+					if err == nil {
+						udpMu.Lock()
+						quicUnavailableTill = time.Time{}
+						udpMu.Unlock()
+						return association, nil
+					}
+
+					// A mobile network can block UDP/QUIC while TCP/TLS still works.
+					// Remember that briefly so every DNS request doesn't pay the
+					// full QUIC timeout before using the stream fallback.
+					udpMu.Lock()
+					quicUnavailableTill = time.Now().Add(60 * time.Second)
+					udpMu.Unlock()
+				}
+			}
+
+			if cfg.Mode == clientconfig.ModeProxy {
+				// Keep DNS inside Chameleon by carrying the RFC 1928 UDP DNS
+				// payload over a normal TCP tunnel. Other UDP is rejected so
+				// applications can fall back to TCP instead of leaking direct.
+				return socks5.NewDNSOverTCPAssociation(dial), nil
 			}
 			return socks5.NewDirectUDPAssociation(ctx, 8*time.Second), nil
+
 		default:
 			return nil, fmt.Errorf("unsupported UDP mode %q", cfg.UDPMode)
 		}
