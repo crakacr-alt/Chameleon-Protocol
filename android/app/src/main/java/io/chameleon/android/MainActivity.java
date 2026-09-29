@@ -278,12 +278,12 @@ public final class MainActivity extends Activity {
     }
 
     private void toggleConnection() {
-        if (ChameleonVpnService.running()) {
+        if (ChameleonVpnService.running() || ChameleonVpnService.starting()) {
             ChameleonVpnService.requestStop(this);
             return;
         }
 
-        if (Mobile.running()) {
+        if (ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())) {
             Intent stop = new Intent(this, ChameleonService.class);
             stop.setAction(ChameleonService.ACTION_STOP);
             startService(stop);
@@ -408,10 +408,14 @@ public final class MainActivity extends Activity {
 
     private void refreshState() {
         boolean vpn = ChameleonVpnService.running();
-        boolean sidecar = Mobile.running() && !vpn;
-        boolean running = vpn || sidecar;
+        boolean vpnStarting = ChameleonVpnService.starting();
+        boolean sidecar = ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())
+                && Mobile.listenerReady() && !vpn;
+        boolean running = vpn || vpnStarting || sidecar;
 
-        stateText.setText(vpn ? "VPN подключён" : (sidecar ? "Подключено" : "Отключено"));
+        stateText.setText(vpn
+                ? "VPN подключён"
+                : (vpnStarting ? "VPN подключается…" : (sidecar ? "Подключено" : "Отключено")));
         stateText.setTextColor(color(running ? R.color.success : R.color.textPrimary));
         powerButton.setBackground(circle(color(running ? R.color.success : R.color.accent)));
         serverText.setText(AppFiles.serverLabel(this));
@@ -420,6 +424,8 @@ public final class MainActivity extends Activity {
         String mode = AppFiles.runtimeMode(this);
         if (vpn) {
             detailText.setText("VPN/TUN • весь телефон • SOCKS5 127.0.0.1:1080");
+        } else if (vpnStarting) {
+            detailText.setText("Запуск SOCKS5 → TUN → tun2socks…");
         } else if (sidecar) {
             detailText.setText("SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase() + " активен");
         } else {
@@ -439,13 +445,21 @@ public final class MainActivity extends Activity {
             JSONObject json = new JSONObject(config);
             String server = json.optString("quic_server", json.optString("tls_server", "—"));
             String mode = json.optString("mode", "smart");
+            boolean listenerReady = Mobile.listenerReady();
+            String listener = listenerReady ? "active" : (Mobile.running() ? "broken" : "stopped");
+            String vpnState = ChameleonVpnService.running()
+                    ? "active"
+                    : (ChameleonVpnService.starting() ? "starting" : "stopped");
+            String lastError = Mobile.lastError();
             String message = error.isEmpty()
                     ? "Конфигурация: OK\nСервер: " + server
                     + "\nРежим: " + mode
                     + "\nProtocol: " + Mobile.version()
                     + "\nSOCKS5: 127.0.0.1:1080"
-                    + "\nListener: " + (Mobile.running() ? "active" : "stopped")
-                    + "\nSystem VPN: " + (ChameleonVpnService.running() ? "active" : "stopped")
+                    + "\nListener: " + listener
+                    + "\nOwner: " + (Mobile.owner().isEmpty() ? "—" : Mobile.owner())
+                    + "\nSystem VPN: " + vpnState
+                    + (lastError.isEmpty() ? "" : "\nLast error: " + lastError)
                     : "Ошибка: " + error;
 
             new AlertDialog.Builder(this)
