@@ -2,6 +2,34 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.0-alpha.4] - 2026-09-29
+
+### Fixed
+
+- устранена race condition при переходе Sidecar/Proxy -> full-device VPN;
+- sidecar и VPN используют owner-aware runtime, поэтому запоздалый lifecycle callback старого сервиса не может остановить новый SOCKS listener;
+- статус VPN выставляется в connected только после готовности SOCKS5, TUN и tun2socks;
+- Android Doctor проверяет реальный localhost listener и показывает runtime owner;
+- обновление APK сохраняет существующий private app config/profile.
+
+### Changed
+
+- Android alpha.4 embeds protocol/client core 1.0.5.
+
+## [1.0.5] - 2026-09-29
+
+### Fixed
+
+- adaptive carrier/DPI state is scoped by configured endpoint/profile, preventing learned failures for a blocked exit from poisoning a newly imported relay endpoint;
+- source Windows installer now uses the same Scheduled Task model as the release installer instead of registering a console executable as a Windows SCM service;
+- relay profile generation preserves `CHAMELEON_TLS_SERVER_NAME` when present.
+
+### Compatibility
+
+- wire protocol is unchanged from 1.0.x;
+- existing client profiles remain valid;
+- adaptive history starts in a new endpoint-scoped state directory automatically; config/PSK are not reset.
+
 ## [1.0.4] - 2026-09-29
 
 ### Added
