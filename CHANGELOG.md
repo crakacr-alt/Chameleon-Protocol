@@ -2,6 +2,22 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.0.4] - 2026-09-29
+
+### Added
+
+- интерактивный двухсерверный установщик `deploy/setup-network.sh` для Ubuntu/Debian;
+- один сценарий для установки Server 1, Server 2, финального pairing и проверки статуса;
+- безопасный обмен только public WireGuard pairing keys: private keys остаются на своих VPS;
+- автоматическое создание relay client profile после успешного handshake;
+- неинтерактивные actions `server1|server2|pair|status` и environment-параметры для автоматизации;
+- отдельная инструкция `docs/network_installer.md`.
+
+### Changed
+
+- для нового wizard private WireGuard link по умолчанию использует UDP/51821;
+- ручной набор длинных relay-команд больше не обязателен для типовой двухсерверной установки.
+
 ## [1.0.3] - 2026-09-29
 
 ### Added
