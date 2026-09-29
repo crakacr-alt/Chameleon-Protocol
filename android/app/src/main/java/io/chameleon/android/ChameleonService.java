@@ -11,16 +11,11 @@ import android.os.IBinder;
 
 import mobile.Mobile;
 
-/**
- * Foreground owner for the local Chameleon SOCKS runtime.
- *
- * The quick action always selects Smart mode before starting, so the user gets
- * predictable one-tap behaviour without re-importing the profile.
- */
 public final class ChameleonService extends Service {
     static final String ACTION_START = "io.chameleon.android.START";
     static final String ACTION_STOP = "io.chameleon.android.STOP";
     static final String ACTION_SMART_TOGGLE = "io.chameleon.android.SMART_TOGGLE";
+    static final String RUNTIME_OWNER = "sidecar";
 
     private static final String CHANNEL_ID = "chameleon_connection";
     private static final int NOTIFICATION_ID = 1001;
@@ -40,7 +35,7 @@ public final class ChameleonService extends Service {
             return START_NOT_STICKY;
         }
 
-        if (ACTION_SMART_TOGGLE.equals(action) && Mobile.running()) {
+        if (ACTION_SMART_TOGGLE.equals(action) && runtimeRunning()) {
             stopRuntime();
             return START_NOT_STICKY;
         }
@@ -52,10 +47,15 @@ public final class ChameleonService extends Service {
                 AppFiles.forceSmart(this);
             }
 
-            String config = AppFiles.readConfig(this);
-            String error = Mobile.start(config);
+            String error = Mobile.startOwned(AppFiles.readConfig(this), RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
                 notifyState("Ошибка: " + error);
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            if (!Mobile.listenerReady()) {
+                notifyState("Ошибка: SOCKS5 listener не готов");
+                Mobile.stopOwned(RUNTIME_OWNER);
                 stopSelf();
                 return START_NOT_STICKY;
             }
@@ -72,8 +72,12 @@ public final class ChameleonService extends Service {
         }
     }
 
+    private boolean runtimeRunning() {
+        return RUNTIME_OWNER.equals(Mobile.owner()) && Mobile.listenerReady();
+    }
+
     private void stopRuntime() {
-        Mobile.stop();
+        Mobile.stopOwned(RUNTIME_OWNER);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
         ChameleonWidget.updateAll(this);
@@ -82,16 +86,14 @@ public final class ChameleonService extends Service {
 
     @Override
     public void onDestroy() {
-        Mobile.stop();
+        Mobile.stopOwned(RUNTIME_OWNER);
         ChameleonWidget.updateAll(this);
         ChameleonTile.requestRefresh(this);
         super.onDestroy();
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
 
     private void createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
@@ -112,7 +114,7 @@ public final class ChameleonService extends Service {
         );
 
         Intent toggle = new Intent(this, ChameleonService.class);
-        toggle.setAction(Mobile.running() ? ACTION_STOP : ACTION_SMART_TOGGLE);
+        toggle.setAction(runtimeRunning() ? ACTION_STOP : ACTION_SMART_TOGGLE);
         PendingIntent togglePending = PendingIntent.getService(
                 this, 1, toggle,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
@@ -129,10 +131,10 @@ public final class ChameleonService extends Service {
                 .setContentIntent(pending)
                 .addAction(new Notification.Action.Builder(
                         R.drawable.ic_chameleon,
-                        Mobile.running() ? "Выключить" : "Smart",
+                        runtimeRunning() ? "Выключить" : "Smart",
                         togglePending
                 ).build())
-                .setOngoing(Mobile.running())
+                .setOngoing(runtimeRunning())
                 .build();
     }
 
