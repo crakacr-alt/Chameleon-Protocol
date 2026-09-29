@@ -198,3 +198,17 @@ func splitPairs(s string) []string {
 	}
 	return out
 }
+
+
+func TestTLSClientConfigUsesCompactCurvePreferences(t *testing.T) {
+	cfg, err := buildTLSClientConfig("127.0.0.1:443", TLSClientConfig{InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.CurvePreferences) != 2 {
+		t.Fatalf("unexpected curve preferences: %v", cfg.CurvePreferences)
+	}
+	if cfg.CurvePreferences[0] != tls.X25519 || cfg.CurvePreferences[1] != tls.CurveP256 {
+		t.Fatalf("want X25519/P-256 compact hello, got %v", cfg.CurvePreferences)
+	}
+}
