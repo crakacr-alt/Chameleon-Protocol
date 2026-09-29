@@ -8,7 +8,7 @@
       "date": "2026-09-29",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.4/Chameleon-Android-1.0.0-alpha.4.apk",
-      "sha256": "",
+      "sha256": "5bef8d09b2af26cd737c87c632ff9c1fc41cefe13f1b20f1d87a287e3fb1e772",
       "changes": [
         "Исправлена гонка Proxy/Smart -> VPN: старый sidecar больше не может остановить новый SOCKS runtime.",
         "VPN показывает состояние подключено только после готовности SOCKS5, TUN и tun2socks.",
