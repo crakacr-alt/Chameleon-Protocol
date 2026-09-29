@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientapp"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientconfig"
@@ -17,19 +18,19 @@ import (
 
 var controller struct {
 	sync.Mutex
-	cancel context.CancelFunc
-	done   chan error
+	cancel     context.CancelFunc
+	done       chan struct{}
+	owner      string
+	listen     string
+	lastError  string
+	generation uint64
 }
 
-func Version() string {
-	return buildversion.Current
-}
+func Version() string { return buildversion.Current }
 
 func BuildConfig(profileText, stateDir, mode string) string {
 	cfg, err := clientconfig.ImportProfile(bytes.NewBufferString(profileText))
-	if err != nil {
-		return "ERROR: " + err.Error()
-	}
+	if err != nil { return "ERROR: " + err.Error() }
 
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", "smart":
@@ -44,49 +45,55 @@ func BuildConfig(profileText, stateDir, mode string) string {
 	cfg.Bypass = []string{"localhost", "127.0.0.0/8", "::1/128"}
 
 	data, err := clientconfig.JSON(cfg)
-	if err != nil {
-		return "ERROR: " + err.Error()
-	}
+	if err != nil { return "ERROR: " + err.Error() }
 	return string(data)
 }
 
 func ValidateConfig(configJSON string) string {
 	_, err := clientconfig.ParseJSON([]byte(configJSON))
-	if err != nil {
-		return err.Error()
-	}
+	if err != nil { return err.Error() }
 	return ""
 }
 
-// Start binds the SOCKS listener before returning. Android can therefore trust
-// an empty error as "127.0.0.1:1080 is actually ready", instead of briefly
-// showing a connected state while a background bind has already failed.
 func Start(configJSON string) string {
-	cfg, err := clientconfig.ParseJSON([]byte(configJSON))
-	if err != nil {
-		return err.Error()
-	}
+	return StartOwned(configJSON, "legacy")
+}
 
-	controller.Lock()
-	defer controller.Unlock()
-	if controller.cancel != nil {
-		return ""
-	}
+// StartOwned starts the shared SOCKS runtime for one lifecycle owner.
+// A stale Android sidecar callback can therefore no longer stop a newer VPN runtime.
+func StartOwned(configJSON, owner string) string {
+	cfg, err := clientconfig.ParseJSON([]byte(configJSON))
+	if err != nil { return err.Error() }
+	owner = strings.TrimSpace(owner)
+	if owner == "" { owner = "legacy" }
 
 	app, err := clientapp.New(cfg)
-	if err != nil {
-		return err.Error()
+	if err != nil { return err.Error() }
+
+	controller.Lock()
+	if controller.cancel != nil {
+		current := controller.owner
+		controller.Unlock()
+		if current == owner { return "" }
+		return fmt.Sprintf("runtime already owned by %s", current)
 	}
 
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
+		controller.Unlock()
 		return fmt.Sprintf("listen SOCKS: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
+	done := make(chan struct{})
+	controller.generation++
+	generation := controller.generation
 	controller.cancel = cancel
 	controller.done = done
+	controller.owner = owner
+	controller.listen = listener.Addr().String()
+	controller.lastError = ""
+	controller.Unlock()
 
 	go func() {
 		<-ctx.Done()
@@ -94,25 +101,54 @@ func Start(configJSON string) string {
 	}()
 
 	go func() {
-		err := app.Serve(ctx, listener)
-		done <- err
-		close(done)
+		serveErr := app.Serve(ctx, listener)
 
 		controller.Lock()
-		controller.cancel = nil
-		controller.done = nil
+		if controller.generation == generation {
+			if serveErr != nil && ctx.Err() == nil {
+				controller.lastError = serveErr.Error()
+			}
+			controller.cancel = nil
+			controller.done = nil
+			controller.owner = ""
+			controller.listen = ""
+		}
 		controller.Unlock()
+		close(done)
 	}()
 
 	return ""
 }
 
-func Stop() {
+func Stop() { stopOwned("") }
+
+func StopOwned(owner string) { stopOwned(strings.TrimSpace(owner)) }
+
+func stopOwned(owner string) {
 	controller.Lock()
+	if controller.cancel == nil {
+		controller.Unlock()
+		return
+	}
+	if owner != "" && controller.owner != owner {
+		controller.Unlock()
+		return
+	}
 	cancel := controller.cancel
+	done := controller.done
 	controller.Unlock()
-	if cancel != nil {
-		cancel()
+
+	cancel()
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			controller.Lock()
+			if controller.cancel != nil {
+				controller.lastError = "runtime stop timed out"
+			}
+			controller.Unlock()
+		}
 	}
 }
 
@@ -122,15 +158,43 @@ func Running() bool {
 	return controller.cancel != nil
 }
 
+func Owner() string {
+	controller.Lock()
+	defer controller.Unlock()
+	return controller.owner
+}
+
+func ListenerReady() bool {
+	controller.Lock()
+	running := controller.cancel != nil
+	address := controller.listen
+	controller.Unlock()
+
+	if !running || strings.TrimSpace(address) == "" { return false }
+	conn, err := net.DialTimeout("tcp", address, 300*time.Millisecond)
+	if err != nil { return false }
+	_ = conn.Close()
+	return true
+}
+
+func LastError() string {
+	controller.Lock()
+	defer controller.Unlock()
+	return controller.lastError
+}
+
 func StatusJSON() string {
 	status := map[string]any{
 		"version": buildversion.Current,
 		"running": Running(),
-		"socks":   "127.0.0.1:1080",
+		"owner": Owner(),
+		"listener_ready": ListenerReady(),
+		"socks": "127.0.0.1:1080",
+		"last_error": LastError(),
 	}
 	data, err := json.Marshal(status)
 	if err != nil {
-		return fmt.Sprintf(`{"version":%q,"running":false}`, buildversion.Current)
+		return fmt.Sprintf("{\"version\":%q,\"running\":false}", buildversion.Current)
 	}
 	return string(data)
 }
