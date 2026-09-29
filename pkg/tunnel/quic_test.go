@@ -157,7 +157,6 @@ func TestQUICRejectsWrongCertificatePin(t *testing.T) {
 	}
 }
 
-
 func TestProbeQUICContextReturnsAuthenticatedStatus(t *testing.T) {
 	cert, der := quicTestCertificate(t)
 
