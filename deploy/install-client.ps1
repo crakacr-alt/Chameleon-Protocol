@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$Profile,
+    [ValidateSet("smart", "proxy")]
     [string]$Mode = "smart"
 )
 
@@ -15,6 +16,7 @@ $Root = Join-Path $env:ProgramFiles "Chameleon"
 $Data = Join-Path $env:ProgramData "Chameleon"
 $Exe = Join-Path $Root "chameleon.exe"
 $Config = Join-Path $Data "config.json"
+$TaskName = "ChameleonClient"
 
 New-Item -ItemType Directory -Force -Path $Root, $Data | Out-Null
 
@@ -31,17 +33,22 @@ if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 & $Exe import $Profile --config $Config --state-dir $Data --mode $Mode
 if ($LASTEXITCODE -ne 0) { throw "profile import failed" }
 
-$ServiceName = "ChameleonClient"
-if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    sc.exe delete $ServiceName | Out-Null
+$legacy = Get-Service -Name $TaskName -ErrorAction SilentlyContinue
+if ($null -ne $legacy) {
+    Stop-Service -Name $TaskName -Force -ErrorAction SilentlyContinue
+    sc.exe delete $TaskName | Out-Null
 }
 
-$BinaryPath = ('"{0}" connect --config "{1}"' -f $Exe, $Config)
-New-Service -Name $ServiceName -BinaryPathName $BinaryPath -DisplayName "Chameleon Adaptive Client" -Description "Chameleon Protocol local SOCKS5 adaptive client" -StartupType Automatic | Out-Null
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+$action = New-ScheduledTaskAction -Execute $Exe -Argument ('connect --config "{0}"' -f $Config)
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$settings = New-ScheduledTaskSettingsSet -RestartCount 20 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -User "SYSTEM" -RunLevel Highest | Out-Null
 
-Start-Service -Name $ServiceName
+Start-ScheduledTask -TaskName $TaskName
+Start-Sleep -Seconds 1
+
 Write-Host "Chameleon client installed."
 Write-Host "SOCKS5: 127.0.0.1:1080"
-Write-Host "Status: Get-Service ChameleonClient"
+Write-Host "Task: Get-ScheduledTask $TaskName"
 Write-Host "Doctor: & '$Exe' doctor --config '$Config'"
