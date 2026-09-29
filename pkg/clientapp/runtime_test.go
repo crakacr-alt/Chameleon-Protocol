@@ -42,7 +42,6 @@ func TestMatchBypass(t *testing.T) {
 	}
 }
 
-
 func TestAdaptiveStateScopeChangesWithEndpoint(t *testing.T) {
 	cfgA := clientconfig.Default()
 	cfgA.TLSServer = "old.example:9443"
