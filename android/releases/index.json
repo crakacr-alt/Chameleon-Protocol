@@ -8,7 +8,7 @@
       "date": "2026-09-30",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.5/Chameleon-Android-1.0.0-alpha.5.apk",
-      "sha256": "",
+      "sha256": "6f9dacda74a1d87654acd08dcdd3ab350daf283709a707451e2ecf9a99cc7e65",
       "changes": [
         "VPN перед запуском TUN проверяет реальный удалённый Chameleon transport и выбирает доступный TCP путь.",
         "TLS ingress автоматически пробуется на стандартном TCP/443, если нестандартный профильный порт недоступен.",
