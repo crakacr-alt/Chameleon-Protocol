@@ -10,8 +10,8 @@ android {
         applicationId "io.chameleon.android"
         minSdk 23
         targetSdk 35
-        versionCode 100003
-        versionName "1.0.0-alpha.3"
+        versionCode 100004
+        versionName "1.0.0-alpha.4"
     }
 
     signingConfigs {
