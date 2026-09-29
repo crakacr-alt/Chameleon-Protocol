@@ -55,7 +55,8 @@ func ProbeTransports(ctx context.Context, cfg clientconfig.Config, samples int, 
 				if err != nil {
 					return err
 				}
-				return conn.Close()
+				_ = conn.Close()
+				return nil
 			},
 		})
 		tasks = append(tasks, diagnosticTask{
