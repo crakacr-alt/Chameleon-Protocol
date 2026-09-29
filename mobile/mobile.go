@@ -217,7 +217,6 @@ func StatusJSON() string {
 	return string(data)
 }
 
-
 // Diagnose runs real remote first-hop checks and returns JSON suitable for the
 // Android Doctor screen. The PSK is used for authentication but is never
 // included in the returned report.
