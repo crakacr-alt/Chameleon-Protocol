@@ -2,6 +2,8 @@ package clientapp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -41,8 +43,9 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 	carrierStore := ""
 	dpiStore := ""
 	if cfg.StateDir != "" {
-		carrierStore = filepath.Join(cfg.StateDir, "carriers.json")
-		dpiStore = filepath.Join(cfg.StateDir, "dpi.json")
+		scope := adaptiveStateScope(cfg)
+		carrierStore = filepath.Join(cfg.StateDir, "profiles", scope, "carriers.json")
+		dpiStore = filepath.Join(cfg.StateDir, "profiles", scope, "dpi.json")
 	}
 
 	carrierEngine, err := carrier.NewEngine(carrierStore)
@@ -158,4 +161,17 @@ func withoutDirect(candidates []carrier.Candidate) []carrier.Candidate {
 		out = append(out, candidate)
 	}
 	return out
+}
+
+func adaptiveStateScope(cfg clientconfig.Config) string {
+	identity := strings.Join([]string{
+		strings.TrimSpace(cfg.Server),
+		strings.TrimSpace(cfg.QUICServer),
+		strings.TrimSpace(cfg.TLSServer),
+		strings.TrimSpace(cfg.TCPServer),
+		strings.TrimSpace(cfg.TLSFingerprint),
+		strings.TrimSpace(cfg.TLSServerName),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(identity))
+	return hex.EncodeToString(sum[:8])
 }

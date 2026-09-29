@@ -1,7 +1,24 @@
 {
   "schema": 1,
-  "latest": "1.0.0-alpha.3",
+  "latest": "1.0.0-alpha.4",
   "releases": [
+    {
+      "version": "1.0.0-alpha.4",
+      "protocol": "1.0.5",
+      "date": "2026-09-29",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.0-alpha.4/Chameleon-Android-1.0.0-alpha.4.apk",
+      "sha256": "",
+      "changes": [
+        "Исправлена гонка Proxy/Smart -> VPN: старый sidecar больше не может остановить новый SOCKS runtime.",
+        "VPN показывает состояние подключено только после готовности SOCKS5, TUN и tun2socks.",
+        "Chameleon doctor теперь проверяет реальную доступность 127.0.0.1:1080 и показывает владельца runtime.",
+        "Адаптивная память разделена по endpoint/profile: старые ошибки заблокированного Server 1 не отравляют новый relay Server 2.",
+        "Конфиг и PSK сохраняются при обычном обновлении APK; повторный импорт профиля не требуется.",
+        "Protocol/client core 1.0.5; wire format совместим с 1.0.x."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.0.0-alpha.3",
       "protocol": "1.0.2",

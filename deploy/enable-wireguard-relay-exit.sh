@@ -73,6 +73,7 @@ fi
 
 psk="$(awk -F= '$1=="CHAMELEON_TUNNEL_PSK"{print substr($0,index($0,"=")+1); exit}' "$SOURCE_PROFILE")"
 fingerprint="$(awk -F= '$1=="CHAMELEON_TLS_FINGERPRINT"{print substr($0,index($0,"=")+1); exit}' "$SOURCE_PROFILE")"
+server_name="$(awk -F= '$1=="CHAMELEON_TLS_SERVER_NAME"{print substr($0,index($0,"=")+1); exit}' "$SOURCE_PROFILE")"
 [ -n "$psk" ] || die "PSK missing from source profile"
 [ -n "$fingerprint" ] || die "TLS fingerprint missing from source profile"
 
@@ -83,6 +84,7 @@ CHAMELEON_QUIC_SERVER=$INGRESS_HOST:$RELAY_PORT
 CHAMELEON_TLS_SERVER=$INGRESS_HOST:$RELAY_PORT
 CHAMELEON_TUNNEL_PSK=$psk
 CHAMELEON_TLS_FINGERPRINT=$fingerprint
+${server_name:+CHAMELEON_TLS_SERVER_NAME=$server_name}
 EOF
 chmod 0600 "$RELAY_PROFILE"
 

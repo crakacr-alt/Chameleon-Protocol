@@ -41,3 +41,20 @@ func TestMatchBypass(t *testing.T) {
 		}
 	}
 }
+
+func TestAdaptiveStateScopeChangesWithEndpoint(t *testing.T) {
+	cfgA := clientconfig.Default()
+	cfgA.TLSServer = "old.example:9443"
+	cfgA.QUICServer = "old.example:9443"
+
+	cfgB := cfgA
+	cfgB.TLSServer = "relay.example:9443"
+	cfgB.QUICServer = "relay.example:9443"
+
+	if adaptiveStateScope(cfgA) == adaptiveStateScope(cfgB) {
+		t.Fatal("different relay endpoints must not share adaptive state")
+	}
+	if adaptiveStateScope(cfgA) != adaptiveStateScope(cfgA) {
+		t.Fatal("adaptive state scope must be stable")
+	}
+}
