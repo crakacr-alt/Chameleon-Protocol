@@ -216,3 +216,37 @@ func StatusJSON() string {
 	}
 	return string(data)
 }
+
+
+// Diagnose runs real remote first-hop checks and returns JSON suitable for the
+// Android Doctor screen. The PSK is used for authentication but is never
+// included in the returned report.
+func Diagnose(configJSON string) string {
+	cfg, err := clientconfig.ParseJSON([]byte(configJSON))
+	if err != nil {
+		data, _ := json.Marshal(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return string(data)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	defer cancel()
+	checks := clientapp.ProbeTransports(ctx, cfg, 1, 5*time.Second)
+
+	ok := len(checks) > 0
+	for _, check := range checks {
+		if !check.OK {
+			ok = false
+		}
+	}
+	data, err := json.Marshal(map[string]any{
+		"ok":     ok,
+		"checks": checks,
+	})
+	if err != nil {
+		return fmt.Sprintf("{\"ok\":false,\"error\":%q}", err.Error())
+	}
+	return string(data)
+}
