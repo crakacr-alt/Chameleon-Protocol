@@ -252,6 +252,24 @@ SOCKS5 UDP ASSOCIATE поддерживает direct UDP и QUIC DATAGRAM.
 - Go 1.27+
 - Linux, macOS или Windows с обычной Go toolchain
 
+### Два сервера: интерактивный автоустановщик
+
+Для схемы `Server 2 ingress -> private WireGuard -> Server 1 Chameleon exit` есть один установщик:
+
+```bash
+curl -fsSLo /root/chameleon-setup.sh \
+  https://raw.githubusercontent.com/crakacr-alt/Chameleon-Protocol/main/deploy/setup-network.sh
+chmod 700 /root/chameleon-setup.sh
+sudo bash /root/chameleon-setup.sh
+```
+
+Он сам устанавливает/обновляет нужные компоненты, генерирует WireGuard identity,
+проверяет pairing и создаёт `/etc/chameleon/client-profile-relay.txt`.
+Между VPS копируются только **public pairing keys**; private WireGuard keys не
+покидают свои серверы.
+
+Подробнее: [docs/network_installer.md](docs/network_installer.md)
+
 ### Сервер: one-command VPS install
 
 На Ubuntu/Debian достаточно:
