@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -107,6 +108,9 @@ func main() {
 			},
 			HandshakeTimeout: *handshakeTimeout,
 			DecoyBody:        decoyBody,
+			OnError: func(peer net.Addr, err error) {
+				log.Printf("transport=tls peer=%s error=%v", peer, err)
+			},
 		})
 		if frontErr != nil {
 			panic(frontErr)
@@ -127,6 +131,9 @@ func main() {
 			tunnel.QUICConfig{
 				HandshakeTimeout: *handshakeTimeout,
 				EnableDatagrams:  true,
+				OnError: func(peer net.Addr, err error) {
+					log.Printf("transport=quic peer=%s error=%v", peer, err)
+				},
 			},
 		)
 		if err != nil {
