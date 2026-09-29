@@ -17,33 +17,23 @@ import java.nio.charset.StandardCharsets;
 import hev.htproxy.TProxyService;
 import mobile.Mobile;
 
-/**
- * Full-device Android VPN mode.
- *
- * Android provides the TUN device, hev-socks5-tunnel converts IP packets to
- * SOCKS5, and the normal shared Chameleon Go core remains the only component
- * that chooses QUIC/TLS/TCP carriers and talks to the Chameleon server.
- *
- * The Chameleon app itself is excluded from its own VpnService to prevent a
- * routing loop. That exclusion covers the local tun2socks -> 127.0.0.1:1080
- * connection and the Go core's upstream sockets.
- */
 public final class ChameleonVpnService extends VpnService {
     static final String ACTION_START = "io.chameleon.android.VPN_START";
     static final String ACTION_STOP = "io.chameleon.android.VPN_STOP";
+    static final String RUNTIME_OWNER = "vpn";
 
     private static final String CHANNEL_ID = "chameleon_vpn";
     private static final int NOTIFICATION_ID = 1002;
 
     private static volatile boolean active;
+    private static volatile boolean starting;
 
     private final Object lock = new Object();
     private ParcelFileDescriptor tun;
     private volatile boolean stopping;
 
-    static boolean running() {
-        return active;
-    }
+    static boolean running() { return active; }
+    static boolean starting() { return starting; }
 
     static void requestStop(Context context) {
         Intent stop = new Intent(context, ChameleonVpnService.class);
@@ -66,14 +56,15 @@ public final class ChameleonVpnService extends VpnService {
             return START_NOT_STICKY;
         }
 
-        if (active || TProxyService.TProxyIsRunning()) {
-            notifyState("VPN уже подключён");
+        if (active || starting || TProxyService.TProxyIsRunning()) {
+            notifyState(active ? "VPN уже подключён" : "VPN подключается…");
             return START_STICKY;
         }
 
         startForeground(NOTIFICATION_ID, notification("Подключение VPN…"));
         stopping = false;
-        active = true;
+        starting = true;
+        active = false;
         ChameleonWidget.updateAll(this);
         ChameleonTile.requestRefresh(this);
         new Thread(this::startTunnel, "chameleon-vpn").start();
@@ -82,25 +73,18 @@ public final class ChameleonVpnService extends VpnService {
 
     private void startTunnel() {
         try {
-            // Ensure a stale sidecar instance does not still own 127.0.0.1:1080.
-            Intent stopSidecar = new Intent(this, ChameleonService.class);
-            stopSidecar.setAction(ChameleonService.ACTION_STOP);
-            startService(stopSidecar);
-            Mobile.stop();
+            stopService(new Intent(this, ChameleonService.class));
+            Mobile.stopOwned(ChameleonService.RUNTIME_OWNER);
 
-            for (int i = 0; i < 40 && Mobile.running(); i++) {
-                Thread.sleep(50);
-            }
-
-            // VPN is intentionally leak-resistant: traffic captured by the TUN
-            // uses Chameleon carriers only. Smart remains the separate
-            // sidecar/coexistence mode.
             AppFiles.setRuntimeMode(this, "vpn");
             AppFiles.setCoreMode(this, "proxy");
 
-            String error = Mobile.start(AppFiles.readConfig(this));
+            String error = Mobile.startOwned(AppFiles.readConfig(this), RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
                 throw new IllegalStateException(error);
+            }
+            if (!RUNTIME_OWNER.equals(Mobile.owner()) || !Mobile.listenerReady()) {
+                throw new IllegalStateException("SOCKS5 127.0.0.1:1080 не запустился");
             }
 
             ParcelFileDescriptor established = new Builder()
@@ -120,10 +104,7 @@ public final class ChameleonVpnService extends VpnService {
                 throw new IllegalStateException("Android не создал VPN-интерфейс");
             }
 
-            synchronized (lock) {
-                tun = established;
-            }
-
+            synchronized (lock) { tun = established; }
             writeTunConfig();
 
             if (!TProxyService.TProxyStartService(
@@ -138,13 +119,16 @@ public final class ChameleonVpnService extends VpnService {
             if (!TProxyService.TProxyIsRunning()) {
                 throw new IllegalStateException("tun2socks не перешёл в рабочее состояние");
             }
+            if (!RUNTIME_OWNER.equals(Mobile.owner()) || !Mobile.listenerReady()) {
+                throw new IllegalStateException("SOCKS5 остановился во время запуска VPN");
+            }
 
+            starting = false;
             active = true;
             notifyState("VPN подключён • весь телефон через Chameleon");
             ChameleonWidget.updateAll(this);
             ChameleonTile.requestRefresh(this);
 
-            // Watch for an unexpected native tunnel exit.
             while (!stopping && TProxyService.TProxyIsRunning()) {
                 Thread.sleep(1000);
             }
@@ -155,13 +139,10 @@ public final class ChameleonVpnService extends VpnService {
         } catch (PackageManager.NameNotFoundException error) {
             notifyState("VPN ошибка: не удалось исключить Chameleon из собственного VPN");
         } catch (Exception error) {
-            if (!stopping) {
-                notifyState("VPN ошибка: " + error.getMessage());
-            }
+            if (!stopping) notifyState("VPN ошибка: " + error.getMessage());
         } finally {
-            if (!stopping) {
-                shutdown(true);
-            }
+            starting = false;
+            if (!stopping) shutdown(true);
         }
     }
 
@@ -184,8 +165,7 @@ public final class ChameleonVpnService extends VpnService {
                 "  log-file: null\n" +
                 "  log-level: warn\n";
 
-        try (FileOutputStream out =
-                     new FileOutputStream(AppFiles.tunConfigFile(this), false)) {
+        try (FileOutputStream out = new FileOutputStream(AppFiles.tunConfigFile(this), false)) {
             out.write(config.getBytes(StandardCharsets.UTF_8));
             out.flush();
         }
@@ -193,27 +173,23 @@ public final class ChameleonVpnService extends VpnService {
 
     private void shutdown(boolean stopService) {
         synchronized (lock) {
-            if (stopping && !active && tun == null && !Mobile.running()) {
+            if (stopping && !active && !starting && tun == null
+                    && !RUNTIME_OWNER.equals(Mobile.owner())) {
                 if (stopService) stopSelf();
                 return;
             }
             stopping = true;
+            starting = false;
             active = false;
 
             try {
-                if (TProxyService.TProxyIsRunning()) {
-                    TProxyService.TProxyStopService();
-                }
-            } catch (Throwable ignored) {
-            }
+                if (TProxyService.TProxyIsRunning()) TProxyService.TProxyStopService();
+            } catch (Throwable ignored) {}
 
-            Mobile.stop();
+            Mobile.stopOwned(RUNTIME_OWNER);
 
             if (tun != null) {
-                try {
-                    tun.close();
-                } catch (Exception ignored) {
-                }
+                try { tun.close(); } catch (Exception ignored) {}
                 tun = null;
             }
         }
@@ -238,7 +214,6 @@ public final class ChameleonVpnService extends VpnService {
 
     private void createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.channel_vpn),
@@ -251,18 +226,14 @@ public final class ChameleonVpnService extends VpnService {
     private Notification notification(String text) {
         Intent open = new Intent(this, MainActivity.class);
         PendingIntent openPending = PendingIntent.getActivity(
-                this,
-                0,
-                open,
+                this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
         Intent stop = new Intent(this, ChameleonVpnService.class);
         stop.setAction(ACTION_STOP);
         PendingIntent stopPending = PendingIntent.getService(
-                this,
-                2,
-                stop,
+                this, 2, stop,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
@@ -276,17 +247,13 @@ public final class ChameleonVpnService extends VpnService {
                 .setContentText(text)
                 .setContentIntent(openPending)
                 .addAction(new Notification.Action.Builder(
-                        R.drawable.ic_chameleon,
-                        "Выключить",
-                        stopPending
-                ).build())
+                        R.drawable.ic_chameleon, "Выключить", stopPending).build())
                 .setOngoing(true)
                 .build();
     }
 
     private void notifyState(String text) {
-        NotificationManager manager =
-                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         manager.notify(NOTIFICATION_ID, notification(text));
     }
 }
