@@ -30,7 +30,9 @@ func Version() string { return buildversion.Current }
 
 func BuildConfig(profileText, stateDir, mode string) string {
 	cfg, err := clientconfig.ImportProfile(bytes.NewBufferString(profileText))
-	if err != nil { return "ERROR: " + err.Error() }
+	if err != nil {
+		return "ERROR: " + err.Error()
+	}
 
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", "smart":
@@ -45,13 +47,17 @@ func BuildConfig(profileText, stateDir, mode string) string {
 	cfg.Bypass = []string{"localhost", "127.0.0.0/8", "::1/128"}
 
 	data, err := clientconfig.JSON(cfg)
-	if err != nil { return "ERROR: " + err.Error() }
+	if err != nil {
+		return "ERROR: " + err.Error()
+	}
 	return string(data)
 }
 
 func ValidateConfig(configJSON string) string {
 	_, err := clientconfig.ParseJSON([]byte(configJSON))
-	if err != nil { return err.Error() }
+	if err != nil {
+		return err.Error()
+	}
 	return ""
 }
 
@@ -63,18 +69,26 @@ func Start(configJSON string) string {
 // A stale Android sidecar callback can therefore no longer stop a newer VPN runtime.
 func StartOwned(configJSON, owner string) string {
 	cfg, err := clientconfig.ParseJSON([]byte(configJSON))
-	if err != nil { return err.Error() }
+	if err != nil {
+		return err.Error()
+	}
 	owner = strings.TrimSpace(owner)
-	if owner == "" { owner = "legacy" }
+	if owner == "" {
+		owner = "legacy"
+	}
 
 	app, err := clientapp.New(cfg)
-	if err != nil { return err.Error() }
+	if err != nil {
+		return err.Error()
+	}
 
 	controller.Lock()
 	if controller.cancel != nil {
 		current := controller.owner
 		controller.Unlock()
-		if current == owner { return "" }
+		if current == owner {
+			return ""
+		}
 		return fmt.Sprintf("runtime already owned by %s", current)
 	}
 
@@ -170,9 +184,13 @@ func ListenerReady() bool {
 	address := controller.listen
 	controller.Unlock()
 
-	if !running || strings.TrimSpace(address) == "" { return false }
+	if !running || strings.TrimSpace(address) == "" {
+		return false
+	}
 	conn, err := net.DialTimeout("tcp", address, 300*time.Millisecond)
-	if err != nil { return false }
+	if err != nil {
+		return false
+	}
 	_ = conn.Close()
 	return true
 }
@@ -185,12 +203,12 @@ func LastError() string {
 
 func StatusJSON() string {
 	status := map[string]any{
-		"version": buildversion.Current,
-		"running": Running(),
-		"owner": Owner(),
+		"version":        buildversion.Current,
+		"running":        Running(),
+		"owner":          Owner(),
 		"listener_ready": ListenerReady(),
-		"socks": "127.0.0.1:1080",
-		"last_error": LastError(),
+		"socks":          "127.0.0.1:1080",
+		"last_error":     LastError(),
 	}
 	data, err := json.Marshal(status)
 	if err != nil {
