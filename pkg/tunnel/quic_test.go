@@ -156,3 +156,61 @@ func TestQUICRejectsWrongCertificatePin(t *testing.T) {
 		t.Fatal("wrong TLS pin must fail")
 	}
 }
+
+
+func TestProbeQUICContextReturnsAuthenticatedStatus(t *testing.T) {
+	cert, der := quicTestCertificate(t)
+
+	server, err := NewServer(ServerConfig{
+		PSK:              "secret",
+		HandshakeTimeout: 2 * time.Second,
+		DialTimeout:      2 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	listener, err := NewQUICListener(
+		"127.0.0.1:0",
+		&tls.Config{Certificates: []tls.Certificate{cert}},
+		server,
+		QUICConfig{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- listener.Serve(ctx) }()
+
+	sum := sha256.Sum256(der)
+	result, err := ProbeQUICContext(
+		context.Background(),
+		listener.Addr().String(),
+		"secret",
+		2*time.Second,
+		TLSClientConfig{
+			ServerName:   "localhost",
+			PinnedSHA256: hex.EncodeToString(sum[:]),
+		},
+	)
+	if err != nil {
+		t.Fatalf("authenticated QUIC probe failed: %v", err)
+	}
+	if result.Transport != "quic" {
+		t.Fatalf("unexpected transport %q", result.Transport)
+	}
+	if result.Latency <= 0 {
+		t.Fatalf("expected positive probe latency, got %v", result.Latency)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("QUIC listener did not stop")
+	}
+}
