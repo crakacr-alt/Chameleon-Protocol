@@ -168,7 +168,7 @@ require editing the config.
 1.0 does not claim transparent resumption of already-open application streams
 during a network handoff. That belongs to the later session-resume architecture.
 
-## Windows service installation
+## Windows startup installation
 
 Run PowerShell as Administrator from a source checkout with Go 1.27+ installed:
 
@@ -181,7 +181,12 @@ The script:
 - runs the Go tests;
 - builds `chameleon.exe`;
 - imports the profile;
-- registers `ChameleonClient` as an automatic Windows service.
+- removes the obsolete SCM service registration if an older installer created it;
+- registers `ChameleonClient` as a SYSTEM Scheduled Task at startup.
+
+The console client does not implement the Windows Service Control Manager
+protocol, so Scheduled Task is used consistently by both source and release
+installers.
 
 The Linux CI cross-builds the Windows client and parses the PowerShell installer
 syntax. Native Windows runtime validation remains a separate platform smoke-test
