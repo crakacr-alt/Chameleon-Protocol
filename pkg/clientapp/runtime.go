@@ -163,7 +163,6 @@ func withoutDirect(candidates []carrier.Candidate) []carrier.Candidate {
 	return out
 }
 
-
 func adaptiveStateScope(cfg clientconfig.Config) string {
 	identity := strings.Join([]string{
 		strings.TrimSpace(cfg.Server),
