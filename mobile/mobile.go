@@ -109,11 +109,28 @@ func PrepareVPNConfig(configJSON string) string {
 	}
 
 	cfg.TCPTransport = selectedTCP
-	// Keep UDP in auto mode. The runtime tries QUIC first and, when UDP is
-	// filtered, carries DNS over the selected Chameleon TCP stream. This keeps
-	// system DNS inside the tunnel while apps with optional UDP can fall back
-	// to their TCP path.
+
+	// QUIC DATAGRAM has a separate ALPN and is a better readiness test for
+	// Android UDP than the stream probe. Prefer UDP/443 on filtered mobile
+	// networks, then fall back to the profile endpoint. If neither is usable,
+	// keep udp_mode=auto so the runtime carries DNS over the selected TCP
+	// Chameleon stream without leaking direct UDP.
 	cfg.UDPMode = "auto"
+	if strings.TrimSpace(cfg.QUICServer) != "" {
+		for _, endpoint := range preferredEndpoints(cfg.QUICServer, "443") {
+			probeCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+			session, probeErr := tunnel.DialQUICDatagramSession(
+				probeCtx, endpoint, cfg.PSK, 1500*time.Millisecond, tlsCfg,
+			)
+			cancel()
+			if probeErr == nil {
+				_ = session.Close()
+				cfg.QUICServer = endpoint
+				cfg.UDPMode = "quic"
+				break
+			}
+		}
+	}
 
 	data, err := clientconfig.JSON(cfg)
 	if err != nil {
