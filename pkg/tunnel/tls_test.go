@@ -213,7 +213,6 @@ func TestTLSClientConfigUsesCompactCurvePreferences(t *testing.T) {
 	}
 }
 
-
 func TestTLSClientHelloStaysBelowSingleMobileSegment(t *testing.T) {
 	clientSide, serverSide := net.Pipe()
 	defer serverSide.Close()
