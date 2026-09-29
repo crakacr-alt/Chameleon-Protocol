@@ -79,7 +79,13 @@ public final class ChameleonVpnService extends VpnService {
             AppFiles.setRuntimeMode(this, "vpn");
             AppFiles.setCoreMode(this, "proxy");
 
-            String error = Mobile.startOwned(AppFiles.readConfig(this), RUNTIME_OWNER);
+            notifyState("Проверка доступного транспорта…");
+            String vpnConfig = Mobile.prepareVPNConfig(AppFiles.readConfig(this));
+            if (vpnConfig.startsWith("ERROR:")) {
+                throw new IllegalStateException(vpnConfig.substring("ERROR:".length()).trim());
+            }
+
+            String error = Mobile.startOwned(vpnConfig, RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
                 throw new IllegalStateException(error);
             }
@@ -89,7 +95,7 @@ public final class ChameleonVpnService extends VpnService {
 
             ParcelFileDescriptor established = new Builder()
                     .setSession("Chameleon VPN")
-                    .setMtu(1500)
+                    .setMtu(1400)
                     .addAddress("198.18.0.1", 32)
                     .addRoute("0.0.0.0", 0)
                     .addAddress("fd00:1:fd00:1::1", 128)
@@ -149,7 +155,7 @@ public final class ChameleonVpnService extends VpnService {
     private void writeTunConfig() throws Exception {
         String config =
                 "tunnel:\n" +
-                "  mtu: 1500\n" +
+                "  mtu: 1400\n" +
                 "  ipv4: 198.18.0.1\n" +
                 "  ipv6: 'fd00:1:fd00:1::1'\n" +
                 "  icmp: 'reply'\n" +
