@@ -54,7 +54,6 @@ func BuildConfig(profileText, stateDir, mode string) string {
 	return string(data)
 }
 
-
 func PrepareVPNConfig(configJSON string) string {
 	cfg, err := clientconfig.ParseJSON([]byte(configJSON))
 	if err != nil {
