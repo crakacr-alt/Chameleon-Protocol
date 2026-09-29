@@ -439,37 +439,79 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        final String config;
         try {
-            String config = AppFiles.readConfig(this);
-            String error = Mobile.validateConfig(config);
-            JSONObject json = new JSONObject(config);
-            String server = json.optString("quic_server", json.optString("tls_server", "—"));
-            String mode = json.optString("mode", "smart");
-            boolean listenerReady = Mobile.listenerReady();
-            String listener = listenerReady ? "active" : (Mobile.running() ? "broken" : "stopped");
-            String vpnState = ChameleonVpnService.running()
-                    ? "active"
-                    : (ChameleonVpnService.starting() ? "starting" : "stopped");
-            String lastError = Mobile.lastError();
-            String message = error.isEmpty()
-                    ? "Конфигурация: OK\nСервер: " + server
-                    + "\nРежим: " + mode
-                    + "\nProtocol: " + Mobile.version()
-                    + "\nSOCKS5: 127.0.0.1:1080"
-                    + "\nListener: " + listener
-                    + "\nOwner: " + (Mobile.owner().isEmpty() ? "—" : Mobile.owner())
-                    + "\nSystem VPN: " + vpnState
-                    + (lastError.isEmpty() ? "" : "\nLast error: " + lastError)
-                    : "Ошибка: " + error;
-
-            new AlertDialog.Builder(this)
-                    .setTitle("Chameleon doctor")
-                    .setMessage(message)
-                    .setPositiveButton("OK", null)
-                    .show();
+            config = AppFiles.readConfig(this);
         } catch (Exception error) {
             Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
+            return;
         }
+
+        Toast.makeText(this, "Проверяю реальное подключение…", Toast.LENGTH_SHORT).show();
+
+        new Thread(() -> {
+            try {
+                String error = Mobile.validateConfig(config);
+                JSONObject json = new JSONObject(config);
+                String server = json.optString("tls_server",
+                        json.optString("quic_server", "—"));
+                String mode = json.optString("mode", "smart");
+                boolean listenerReady = Mobile.listenerReady();
+                String listener = listenerReady
+                        ? "active"
+                        : (Mobile.running() ? "broken" : "stopped");
+                String vpnState = ChameleonVpnService.running()
+                        ? "active"
+                        : (ChameleonVpnService.starting() ? "starting" : "stopped");
+                String lastError = Mobile.lastError();
+
+                String remoteStatus;
+                if (error.isEmpty()) {
+                    String prepared = Mobile.prepareVPNConfig(config);
+                    if (prepared.startsWith("ERROR:")) {
+                        remoteStatus = "FAIL • " + prepared.substring("ERROR:".length()).trim();
+                    } else {
+                        JSONObject selected = new JSONObject(prepared);
+                        String tcpTransport = selected.optString("tcp_transport", "auto");
+                        String tcpEndpoint = selected.optString("tls_server",
+                                selected.optString("quic_server",
+                                        selected.optString("tcp_server", "—")));
+                        String udpMode = selected.optString("udp_mode", "auto");
+                        String udpStatus = "quic".equalsIgnoreCase(udpMode)
+                                ? "QUIC"
+                                : "DNS-over-TCP fallback";
+                        remoteStatus = "OK • TCP " + tcpTransport.toUpperCase()
+                                + " " + tcpEndpoint + " • UDP " + udpStatus;
+                    }
+                } else {
+                    remoteStatus = "не проверялось";
+                }
+
+                String message = error.isEmpty()
+                        ? "Конфигурация: OK\nСервер профиля: " + server
+                        + "\nУдалённый транспорт: " + remoteStatus
+                        + "\nРежим: " + mode
+                        + "\nProtocol: " + Mobile.version()
+                        + "\nSOCKS5: 127.0.0.1:1080"
+                        + "\nListener: " + listener
+                        + "\nOwner: " + (Mobile.owner().isEmpty() ? "—" : Mobile.owner())
+                        + "\nSystem VPN: " + vpnState
+                        + (lastError.isEmpty() ? "" : "\nLast error: " + lastError)
+                        : "Ошибка: " + error;
+
+                runOnUiThread(() -> new AlertDialog.Builder(this)
+                        .setTitle("Chameleon doctor")
+                        .setMessage(message)
+                        .setPositiveButton("OK", null)
+                        .show());
+            } catch (Exception diagnosticError) {
+                runOnUiThread(() -> Toast.makeText(
+                        this,
+                        diagnosticError.getMessage(),
+                        Toast.LENGTH_LONG
+                ).show());
+            }
+        }, "chameleon-doctor").start();
     }
 
     private void checkUpdates(boolean userRequested) {
