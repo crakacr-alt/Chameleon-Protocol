@@ -32,7 +32,6 @@ func TestRejectUnknownMode(t *testing.T) {
 	}
 }
 
-
 func TestRuntimeOwnerPreventsStaleStop(t *testing.T) {
 	cfg := clientconfig.Default()
 	cfg.Listen = "127.0.0.1:0"
