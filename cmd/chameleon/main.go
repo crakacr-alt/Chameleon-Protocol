@@ -266,7 +266,15 @@ func measureCheck(
 	samples int,
 	run func(context.Context) error,
 ) doctorCheck {
-	summary := probe.Measure(ctx, samples, 100*time.Millisecond, run)
+	var lastErr error
+	wrapped := func(probeCtx context.Context) error {
+		err := run(probeCtx)
+		if err != nil {
+			lastErr = err
+		}
+		return err
+	}
+	summary := probe.Measure(ctx, samples, 100*time.Millisecond, wrapped)
 	check := doctorCheck{
 		Name:    name,
 		Target:  target,
@@ -274,7 +282,11 @@ func measureCheck(
 		Latency: summary.AvgLatency,
 	}
 	if summary.Successes == 0 {
-		check.Error = fmt.Sprintf("%d/%d probes failed", summary.Failures, summary.Attempts)
+		if lastErr != nil {
+			check.Error = lastErr.Error()
+		} else {
+			check.Error = fmt.Sprintf("%d/%d probes failed", summary.Failures, summary.Attempts)
+		}
 	}
 	return check
 }
