@@ -26,6 +26,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -440,35 +441,92 @@ public final class MainActivity extends Activity {
         }
 
         try {
-            String config = AppFiles.readConfig(this);
-            String error = Mobile.validateConfig(config);
+            final String config = AppFiles.readConfig(this);
+            String validationError = Mobile.validateConfig(config);
+            if (!validationError.isEmpty()) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Chameleon doctor")
+                        .setMessage("Ошибка конфигурации: " + validationError)
+                        .setPositiveButton("OK", null)
+                        .show();
+                return;
+            }
+
             JSONObject json = new JSONObject(config);
             String server = json.optString("quic_server", json.optString("tls_server", "—"));
             String mode = json.optString("mode", "smart");
+            String fingerprint = json.optString("tls_fingerprint", "");
+            if (fingerprint.length() > 16) fingerprint = fingerprint.substring(0, 16) + "…";
+
             boolean listenerReady = Mobile.listenerReady();
             String listener = listenerReady ? "active" : (Mobile.running() ? "broken" : "stopped");
             String vpnState = ChameleonVpnService.running()
                     ? "active"
                     : (ChameleonVpnService.starting() ? "starting" : "stopped");
             String lastError = Mobile.lastError();
-            String message = error.isEmpty()
-                    ? "Конфигурация: OK\nСервер: " + server
+
+            final String localMessage =
+                    "Конфигурация: OK"
+                    + "\nСервер: " + server
                     + "\nРежим: " + mode
                     + "\nProtocol: " + Mobile.version()
+                    + (fingerprint.isEmpty() ? "" : "\nTLS pin: " + fingerprint)
                     + "\nSOCKS5: 127.0.0.1:1080"
                     + "\nListener: " + listener
                     + "\nOwner: " + (Mobile.owner().isEmpty() ? "—" : Mobile.owner())
                     + "\nSystem VPN: " + vpnState
-                    + (lastError.isEmpty() ? "" : "\nLast error: " + lastError)
-                    : "Ошибка: " + error;
+                    + (lastError.isEmpty() ? "" : "\nLast runtime error: " + lastError);
 
-            new AlertDialog.Builder(this)
-                    .setTitle("Chameleon doctor")
-                    .setMessage(message)
-                    .setPositiveButton("OK", null)
-                    .show();
+            Toast.makeText(this, "Проверяю TCP, TLS и QUIC…", Toast.LENGTH_SHORT).show();
+
+            new Thread(() -> {
+                String remoteReport = Mobile.diagnose(config);
+                handler.post(() -> {
+                    String message = localMessage + "\n\nСЕТЕВЫЕ ПРОВЕРКИ:\n"
+                            + formatRemoteDiagnostics(remoteReport);
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("Chameleon doctor")
+                            .setMessage(message)
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+            }, "chameleon-doctor").start();
         } catch (Exception error) {
             Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String formatRemoteDiagnostics(String report) {
+        try {
+            JSONObject root = new JSONObject(report);
+            String topError = root.optString("error", "");
+            if (!topError.isEmpty()) return "FAIL: " + topError;
+
+            JSONArray checks = root.optJSONArray("checks");
+            if (checks == null || checks.length() == 0) return "Нет настроенных transport endpoints";
+
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < checks.length(); i++) {
+                JSONObject check = checks.getJSONObject(i);
+                boolean ok = check.optBoolean("ok", false);
+                String name = check.optString("name", "?");
+                String target = check.optString("target", "");
+                out.append(ok ? "✓ " : "✗ ")
+                        .append(name)
+                        .append(" ")
+                        .append(target);
+                if (ok && check.optLong("latency_ms", 0) > 0) {
+                    out.append(" • ").append(check.optLong("latency_ms")).append(" ms");
+                }
+                if (!ok) {
+                    String error = check.optString("error", "unknown error");
+                    out.append("\n   ").append(error);
+                }
+                if (i + 1 < checks.length()) out.append("\n");
+            }
+            return out.toString();
+        } catch (Exception error) {
+            return "FAIL: не удалось разобрать отчёт: " + error.getMessage();
         }
     }
 

@@ -122,6 +122,11 @@ func buildTLSClientConfig(serverAddress string, cfg TLSClientConfig) (*tls.Confi
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		RootCAs:            cfg.RootCAs,
 		NextProtos:         []string{"http/1.1"},
+		// Go 1.24+ advertises a hybrid ML-KEM key share by default. That makes
+		// ClientHello larger than a normal mobile-path TCP segment and has proven
+		// fragile on some relays/middleboxes. Chameleon favors a compact,
+		// universally supported first flight and keeps standard X25519/P-256.
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 	}
 
 	if strings.TrimSpace(cfg.PinnedSHA256) != "" {
@@ -163,6 +168,9 @@ type TLSFrontConfig struct {
 	TLSConfig        *tls.Config
 	HandshakeTimeout time.Duration
 	DecoyBody        string
+	// OnError receives per-connection failures without exposing application
+	// payloads. It is used by the server binary for actionable journal logs.
+	OnError func(net.Addr, error)
 }
 
 // TLSFront accepts standard TLS, serves a small HTTP response to ordinary HTTP
@@ -218,9 +226,12 @@ func (f *TLSFront) Serve(ctx context.Context, listener net.Listener) error {
 				return err
 			}
 		}
-		go func() {
-			_ = f.HandleConn(ctx, conn)
-		}()
+		go func(raw net.Conn) {
+			err := f.HandleConn(ctx, raw)
+			if err != nil && ctx.Err() == nil && f.cfg.OnError != nil {
+				f.cfg.OnError(raw.RemoteAddr(), err)
+			}
+		}(conn)
 	}
 }
 
@@ -237,13 +248,13 @@ func (f *TLSFront) HandleConn(ctx context.Context, raw net.Conn) error {
 		return err
 	}
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		return err
+		return fmt.Errorf("TLS handshake: %w", err)
 	}
 
 	reader := bufio.NewReader(tlsConn)
 	prefix, err := reader.Peek(4)
 	if err != nil {
-		return err
+		return fmt.Errorf("read first TLS application bytes: %w", err)
 	}
 	if looksLikeHTTP(prefix) {
 		return f.serveDecoy(tlsConn, reader)

@@ -20,6 +20,9 @@ type QUICConfig struct {
 	IdleTimeout      time.Duration
 	KeepAlive        time.Duration
 	EnableDatagrams  bool
+	// OnError is used by listeners to report per-connection failures. Client
+	// callers leave it nil.
+	OnError func(net.Addr, error)
 }
 
 func (c QUICConfig) normalize() QUICConfig {
@@ -106,6 +109,7 @@ func DialQUICContext(
 type QUICListener struct {
 	listener *quic.Listener
 	server   *Server
+	onError  func(net.Addr, error)
 }
 
 // NewQUICListener starts listening on UDP address using the same certificate
@@ -129,7 +133,7 @@ func NewQUICListener(address string, tlsConfig *tls.Config, server *Server, cfg 
 	if err != nil {
 		return nil, fmt.Errorf("listen QUIC: %w", err)
 	}
-	return &QUICListener{listener: listener, server: server}, nil
+	return &QUICListener{listener: listener, server: server, onError: cfg.OnError}, nil
 }
 
 func (l *QUICListener) Addr() net.Addr {
@@ -166,35 +170,44 @@ func (l *QUICListener) Serve(ctx context.Context) error {
 			return err
 		}
 
-		go l.handleConn(ctx, conn)
+		go func(qconn *quic.Conn) {
+			err := l.handleConn(ctx, qconn)
+			if err != nil && ctx.Err() == nil && l.onError != nil {
+				l.onError(qconn.RemoteAddr(), err)
+			}
+		}(conn)
 	}
 }
 
-func (l *QUICListener) handleConn(ctx context.Context, conn *quic.Conn) {
+func (l *QUICListener) handleConn(ctx context.Context, conn *quic.Conn) error {
 	switch conn.ConnectionState().TLS.NegotiatedProtocol {
 	case quicDatagramALPN:
 		if err := l.server.handleQUICDatagramConn(ctx, conn); err != nil {
 			_ = conn.CloseWithError(1, "datagram session failed")
+			return fmt.Errorf("QUIC datagram session: %w", err)
 		}
-		return
+		return nil
 	case quicALPN:
-		// Continue with the 0.9.0 reliable stream mode.
+		// Continue with the reliable stream mode.
 	default:
 		_ = conn.CloseWithError(1, "unsupported ALPN")
-		return
+		return fmt.Errorf("unsupported QUIC ALPN %q", conn.ConnectionState().TLS.NegotiatedProtocol)
 	}
 
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		_ = conn.CloseWithError(1, "stream accept failed")
-		return
+		return fmt.Errorf("accept QUIC tunnel stream: %w", err)
 	}
 
 	wrapped := &quicStreamConn{
 		Stream: stream,
 		conn:   conn,
 	}
-	_ = l.server.HandleConn(ctx, wrapped)
+	if err := l.server.HandleConn(ctx, wrapped); err != nil {
+		return fmt.Errorf("QUIC tunnel: %w", err)
+	}
+	return nil
 }
 
 // quicStreamConn adapts a QUIC stream to net.Conn so the existing encrypted
