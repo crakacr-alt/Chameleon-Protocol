@@ -8,7 +8,7 @@
       "date": "2026-09-30",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.9-alpha/Chameleon-Android-1.0.9-alpha.apk",
-      "sha256": "",
+      "sha256": "4589f2d942473b6bc64ce303ea5a8bfdbfd7a9fcf342ce2f440b73bad2e597ad",
       "changes": [
         "TLS preflight использует paced-split с паузой 25 ms между первым байтом и остатком ClientHello для мобильных DPI.",
         "adaptive runtime использует такую же паузу 25 ms для split-early; PSK, TLS-сертификат, QUIC и wire protocol не менялись.",
