@@ -4,9 +4,23 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientconfig"
 )
+
+func TestMobileProbeStrategiesPreferPacedSplit(t *testing.T) {
+	strategies := mobileProbeStrategies()
+	if len(strategies) != 2 {
+		t.Fatalf("expected paced and split probe strategies, got %d", len(strategies))
+	}
+	if strategies[0].Name != "paced-split-mobile" || strategies[0].DelayBetweenFragments != 25*time.Millisecond {
+		t.Fatalf("unexpected paced strategy: %+v", strategies[0])
+	}
+	if strategies[1].Name != "split-early" {
+		t.Fatalf("expected split-early fallback, got %q", strategies[1].Name)
+	}
+}
 
 func TestBuildConfigFromServerProfile(t *testing.T) {
 	profile := `

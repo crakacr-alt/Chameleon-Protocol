@@ -63,10 +63,11 @@ func DefaultStrategies() []Strategy {
 			Cost:       0,
 		},
 		{
-			Name:        "split-early",
-			Techniques:  []Technique{TechniqueSplit},
-			SplitPoints: []int{1},
-			Cost:        0.35,
+			Name:                  "split-early",
+			Techniques:            []Technique{TechniqueSplit},
+			SplitPoints:           []int{1},
+			DelayBetweenFragments: 25 * time.Millisecond,
+			Cost:                  0.35,
 		},
 		{
 			Name:                  "paced-split",

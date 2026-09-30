@@ -1,7 +1,21 @@
 {
   "schema": 1,
-  "latest": "1.0.8-alpha",
+  "latest": "1.0.9-alpha",
   "releases": [
+    {
+      "version": "1.0.9-alpha",
+      "protocol": "1.0.6-compatible",
+      "date": "2026-09-30",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.9-alpha/Chameleon-Android-1.0.9-alpha.apk",
+      "sha256": "",
+      "changes": [
+        "TLS preflight использует paced-split с паузой 25 ms между первым байтом и остатком ClientHello для мобильных DPI.",
+        "adaptive runtime использует такую же паузу 25 ms для split-early; PSK, TLS-сертификат, QUIC и wire protocol не менялись.",
+        "Совместимо с сервером Chameleon 1.0.6."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.0.8-alpha",
       "protocol": "1.0.6-compatible",

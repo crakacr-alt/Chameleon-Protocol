@@ -76,28 +76,33 @@ func PrepareVPNConfig(configJSON string) string {
 	selectedTCP := ""
 	probeFailures := make([]string, 0, 4)
 	if strings.TrimSpace(cfg.TLSServer) != "" {
-		// Some mobile paths accept the TCP connection but drop a one-piece TLS
-		// ClientHello. Keep preflight consistent with the adaptive runtime's
-		// learned split-early strategy so a successful probe proves the actual
-		// first flight can cross the relay.
-		probeDial := func(ctx context.Context, address string) (net.Conn, error) {
-			dialer := &net.Dialer{Timeout: probeTimeout}
-			conn, err := dialer.DialContext(ctx, "tcp", address)
-			if err != nil {
-				return nil, err
+		// Some mobile paths accept the TCP connection and the first TLS record
+		// byte, but suppress the rest of a tightly packed ClientHello. Probe the
+		// paced variant first, then fall back to the low-latency split-early
+		// variant used by the adaptive runtime.
+		for _, strategy := range mobileProbeStrategies() {
+			probeDial := func(ctx context.Context, address string) (net.Conn, error) {
+				dialer := &net.Dialer{Timeout: probeTimeout}
+				conn, err := dialer.DialContext(ctx, "tcp", address)
+				if err != nil {
+					return nil, err
+				}
+				return dpi.NewFirstWriteConn(conn, strategy), nil
 			}
-			return dpi.NewFirstWriteConn(conn, splitEarlyStrategy()), nil
-		}
-		for _, endpoint := range preferredEndpoints(cfg.TLSServer, "443") {
-			probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-			_, probeErr := tunnel.ProbeTLSWithDialer(probeCtx, endpoint, cfg.PSK, probeTimeout, tlsCfg, probeDial)
-			cancel()
-			if probeErr == nil {
-				cfg.TLSServer = endpoint
-				selectedTCP = "tls"
+			for _, endpoint := range preferredEndpoints(cfg.TLSServer, "443") {
+				probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+				_, probeErr := tunnel.ProbeTLSWithDialer(probeCtx, endpoint, cfg.PSK, probeTimeout, tlsCfg, probeDial)
+				cancel()
+				if probeErr == nil {
+					cfg.TLSServer = endpoint
+					selectedTCP = "tls"
+					break
+				}
+				probeFailures = append(probeFailures, fmt.Sprintf("TLS %s (%s): %v", endpoint, strategy.Name, probeErr))
+			}
+			if selectedTCP != "" {
 				break
 			}
-			probeFailures = append(probeFailures, fmt.Sprintf("TLS %s: %v", endpoint, probeErr))
 		}
 	}
 
@@ -165,13 +170,30 @@ func PrepareVPNConfig(configJSON string) string {
 	return string(data)
 }
 
-func splitEarlyStrategy() dpi.Strategy {
+func mobileProbeStrategies() []dpi.Strategy {
+	var paced, split dpi.Strategy
 	for _, strategy := range dpi.DefaultStrategies() {
-		if strategy.Name == "split-early" {
-			return strategy
+		switch strategy.Name {
+		case "paced-split":
+			// A few mobile middleboxes need a visible inter-fragment gap. Keep
+			// this limited to the one ClientHello probe; application traffic
+			// still uses the same paced first-flight behavior in adaptive
+			// runtime after the preflight has proved it works.
+			strategy.Name = "paced-split-mobile"
+			strategy.DelayBetweenFragments = 25 * time.Millisecond
+			paced = strategy
+		case "split-early":
+			split = strategy
 		}
 	}
-	return dpi.Strategy{}
+	strategies := make([]dpi.Strategy, 0, 2)
+	if paced.Name != "" {
+		strategies = append(strategies, paced)
+	}
+	if split.Name != "" {
+		strategies = append(strategies, split)
+	}
+	return strategies
 }
 
 func preferredEndpoints(endpoint, preferredPort string) []string {
