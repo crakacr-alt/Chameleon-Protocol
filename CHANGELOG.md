@@ -2,6 +2,19 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.7-alpha] - 2026-09-30
+
+### Fixed
+
+- TLS ClientHello ограничен X25519/P-256: Android/mobile relay paths больше не получают большой гибридный ML-KEM key share, который мог быть отброшен до handshake и отображался как `Remote transport FAIL`.
+- Добавлены диагностические stage/error логи для remote preflight, SOCKS listener, `VpnService.Builder.establish()` и tun2socks; причина `Listener stopped` теперь сохраняется в runtime status.
+- Ошибки TLS/QUIC/TCP preflight теперь содержат конкретный endpoint и текст последней ошибки вместо общего сообщения.
+
+### Compatibility
+
+- wire protocol не изменён; клиент совместим с сервером Chameleon 1.0.6 и другими Server 1.0.x.
+- существующие профили, PSK и настройки Android сохраняются.
+
 ## [Android 1.0.0-alpha.5] - 2026-09-30
 
 ### Fixed

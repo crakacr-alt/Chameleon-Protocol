@@ -8,10 +8,12 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
+import android.util.Log;
 
 import mobile.Mobile;
 
 public final class ChameleonService extends Service {
+    private static final String TAG = "ChameleonService";
     static final String ACTION_START = "io.chameleon.android.START";
     static final String ACTION_STOP = "io.chameleon.android.STOP";
     static final String ACTION_SMART_TOGGLE = "io.chameleon.android.SMART_TOGGLE";
@@ -49,11 +51,14 @@ public final class ChameleonService extends Service {
 
             String error = Mobile.startOwned(AppFiles.readConfig(this), RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
+                Log.e(TAG, "runtime start failed: " + error);
                 notifyState("Ошибка: " + error);
                 stopSelf();
                 return START_NOT_STICKY;
             }
             if (!Mobile.listenerReady()) {
+                Log.e(TAG, "listener stopped during startup; stage=" + Mobile.stage()
+                        + " error=" + Mobile.lastError());
                 notifyState("Ошибка: SOCKS5 listener не готов");
                 Mobile.stopOwned(RUNTIME_OWNER);
                 stopSelf();
@@ -66,6 +71,8 @@ public final class ChameleonService extends Service {
             ChameleonTile.requestRefresh(this);
             return START_STICKY;
         } catch (Exception error) {
+            Log.e(TAG, "startup failed: stage=" + Mobile.stage()
+                    + " error=" + error.getMessage(), error);
             notifyState("Ошибка профиля: " + error.getMessage());
             stopSelf();
             return START_NOT_STICKY;

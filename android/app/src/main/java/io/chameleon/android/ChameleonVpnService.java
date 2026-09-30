@@ -10,14 +10,17 @@ import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.util.Log;
 
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 import hev.htproxy.TProxyService;
 import mobile.Mobile;
+import org.json.JSONObject;
 
 public final class ChameleonVpnService extends VpnService {
+    private static final String TAG = "ChameleonVPN";
     static final String ACTION_START = "io.chameleon.android.VPN_START";
     static final String ACTION_STOP = "io.chameleon.android.VPN_STOP";
     static final String RUNTIME_OWNER = "vpn";
@@ -73,6 +76,7 @@ public final class ChameleonVpnService extends VpnService {
 
     private void startTunnel() {
         try {
+            Log.i(TAG, "start: stopping sidecar runtime");
             stopService(new Intent(this, ChameleonService.class));
             Mobile.stopOwned(ChameleonService.RUNTIME_OWNER);
 
@@ -82,16 +86,31 @@ public final class ChameleonVpnService extends VpnService {
             notifyState("Проверка доступного транспорта…");
             String vpnConfig = Mobile.prepareVPNConfig(AppFiles.readConfig(this));
             if (vpnConfig.startsWith("ERROR:")) {
+                Log.e(TAG, "remote transport preflight failed: " + vpnConfig);
                 throw new IllegalStateException(vpnConfig.substring("ERROR:".length()).trim());
             }
+            JSONObject selected = new JSONObject(vpnConfig);
+            String transport = selected.optString("tcp_transport", "auto");
+            String endpoint = "tls".equalsIgnoreCase(transport)
+                    ? selected.optString("tls_server", "")
+                    : ("quic".equalsIgnoreCase(transport)
+                    ? selected.optString("quic_server", "")
+                    : selected.optString("tcp_server", ""));
+            Log.i(TAG, "remote transport selected: " + transport.toUpperCase()
+                    + " endpoint=" + endpoint
+                    + " udp=" + selected.optString("udp_mode", "auto"));
 
             String error = Mobile.startOwned(vpnConfig, RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
+                Log.e(TAG, "SOCKS runtime start failed: " + error);
                 throw new IllegalStateException(error);
             }
             if (!RUNTIME_OWNER.equals(Mobile.owner()) || !Mobile.listenerReady()) {
+                Log.e(TAG, "SOCKS listener is not ready; stage=" + Mobile.stage()
+                        + " error=" + Mobile.lastError());
                 throw new IllegalStateException("SOCKS5 127.0.0.1:1080 не запустился");
             }
+            Log.i(TAG, "SOCKS listener ready");
 
             ParcelFileDescriptor established = new Builder()
                     .setSession("Chameleon VPN")
@@ -107,6 +126,7 @@ public final class ChameleonVpnService extends VpnService {
                     .establish();
 
             if (established == null) {
+                Log.e(TAG, "VpnService.Builder.establish returned null");
                 throw new IllegalStateException("Android не создал VPN-интерфейс");
             }
 
@@ -116,6 +136,7 @@ public final class ChameleonVpnService extends VpnService {
             if (!TProxyService.TProxyStartService(
                     AppFiles.tunConfigFile(this).getAbsolutePath(),
                     established.getFd())) {
+                Log.e(TAG, "tun2socks start failed");
                 throw new IllegalStateException("tun2socks не запустился");
             }
 
@@ -123,9 +144,12 @@ public final class ChameleonVpnService extends VpnService {
                 Thread.sleep(50);
             }
             if (!TProxyService.TProxyIsRunning()) {
+                Log.e(TAG, "tun2socks stopped during startup");
                 throw new IllegalStateException("tun2socks не перешёл в рабочее состояние");
             }
             if (!RUNTIME_OWNER.equals(Mobile.owner()) || !Mobile.listenerReady()) {
+                Log.e(TAG, "SOCKS listener stopped during TUN startup; stage=" + Mobile.stage()
+                        + " error=" + Mobile.lastError());
                 throw new IllegalStateException("SOCKS5 остановился во время запуска VPN");
             }
 
@@ -145,6 +169,8 @@ public final class ChameleonVpnService extends VpnService {
         } catch (PackageManager.NameNotFoundException error) {
             notifyState("VPN ошибка: не удалось исключить Chameleon из собственного VPN");
         } catch (Exception error) {
+            Log.e(TAG, "VPN startup failed: stage=" + Mobile.stage()
+                    + " error=" + error.getMessage(), error);
             if (!stopping) notifyState("VPN ошибка: " + error.getMessage());
         } finally {
             starting = false;

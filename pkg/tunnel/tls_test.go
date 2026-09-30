@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"encoding/hex"
 	"io"
 	"math/big"
@@ -197,4 +198,50 @@ func splitPairs(s string) []string {
 		s = s[2:]
 	}
 	return out
+}
+
+func TestTLSClientConfigUsesCompactCurvePreferences(t *testing.T) {
+	cfg, err := buildTLSClientConfig("127.0.0.1:443", TLSClientConfig{InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.CurvePreferences) != 2 || cfg.CurvePreferences[0] != tls.X25519 || cfg.CurvePreferences[1] != tls.CurveP256 {
+		t.Fatalf("want compact X25519/P-256 preferences, got %v", cfg.CurvePreferences)
+	}
+}
+
+func TestTLSClientHelloFitsMobileFirstFlight(t *testing.T) {
+	clientSide, serverSide := net.Pipe()
+	defer serverSide.Close()
+
+	cfg, err := buildTLSClientConfig("127.0.0.1:443", TLSClientConfig{InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := tls.Client(clientSide, cfg)
+	defer client.Close()
+
+	done := make(chan error, 1)
+	go func() { done <- client.Handshake() }()
+
+	if err := serverSide.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var header [5]byte
+	if _, err := io.ReadFull(serverSide, header[:]); err != nil {
+		t.Fatal(err)
+	}
+	if header[0] != 0x16 {
+		t.Fatalf("expected TLS handshake record, got 0x%x", header[0])
+	}
+	if recordLen := int(binary.BigEndian.Uint16(header[3:5])); recordLen > 1200 {
+		t.Fatalf("TLS ClientHello record exceeds mobile first flight: %d bytes", recordLen)
+	}
+
+	_ = serverSide.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("TLS handshake did not stop")
+	}
 }

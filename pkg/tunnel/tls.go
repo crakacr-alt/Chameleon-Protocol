@@ -122,6 +122,10 @@ func buildTLSClientConfig(serverAddress string, cfg TLSClientConfig) (*tls.Confi
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		RootCAs:            cfg.RootCAs,
 		NextProtos:         []string{"http/1.1"},
+		// Keep the first TLS flight compact for Android/mobile paths and
+		// TCP relays. Newer Go releases may otherwise advertise a hybrid
+		// ML-KEM key share, which can be fragmented or dropped by middleboxes.
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 	}
 
 	if strings.TrimSpace(cfg.PinnedSHA256) != "" {

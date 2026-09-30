@@ -24,6 +24,7 @@ var controller struct {
 	owner      string
 	listen     string
 	lastError  string
+	stage      string
 	generation uint64
 }
 
@@ -68,6 +69,7 @@ func PrepareVPNConfig(configJSON string) string {
 	const probeTimeout = 2500 * time.Millisecond
 
 	selectedTCP := ""
+	probeFailures := make([]string, 0, 4)
 	if strings.TrimSpace(cfg.TLSServer) != "" {
 		for _, endpoint := range preferredEndpoints(cfg.TLSServer, "443") {
 			probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
@@ -78,6 +80,7 @@ func PrepareVPNConfig(configJSON string) string {
 				selectedTCP = "tls"
 				break
 			}
+			probeFailures = append(probeFailures, fmt.Sprintf("TLS %s: %v", endpoint, probeErr))
 		}
 	}
 
@@ -91,6 +94,7 @@ func PrepareVPNConfig(configJSON string) string {
 				selectedTCP = "quic"
 				break
 			}
+			probeFailures = append(probeFailures, fmt.Sprintf("QUIC %s: %v", endpoint, probeErr))
 		}
 	}
 
@@ -100,11 +104,16 @@ func PrepareVPNConfig(configJSON string) string {
 		cancel()
 		if probeErr == nil {
 			selectedTCP = "tcp"
+		} else {
+			probeFailures = append(probeFailures, fmt.Sprintf("TCP %s: %v", cfg.TCPServer, probeErr))
 		}
 	}
 
 	if selectedTCP == "" {
-		return "ERROR: удалённый Chameleon недоступен по TLS/QUIC/TCP"
+		if len(probeFailures) == 0 {
+			return "ERROR: удалённый Chameleon недоступен: в профиле нет transport endpoint"
+		}
+		return "ERROR: удалённый Chameleon недоступен; " + strings.Join(probeFailures, "; ")
 	}
 
 	cfg.TCPTransport = selectedTCP
@@ -180,6 +189,7 @@ func StartOwned(configJSON, owner string) string {
 
 	app, err := clientapp.New(cfg)
 	if err != nil {
+		setControllerError("client runtime init", err)
 		return err.Error()
 	}
 
@@ -196,6 +206,7 @@ func StartOwned(configJSON, owner string) string {
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		controller.Unlock()
+		setControllerError("listener bind", err)
 		return fmt.Sprintf("listen SOCKS: %v", err)
 	}
 
@@ -208,6 +219,7 @@ func StartOwned(configJSON, owner string) string {
 	controller.owner = owner
 	controller.listen = listener.Addr().String()
 	controller.lastError = ""
+	controller.stage = "listener-ready"
 	controller.Unlock()
 
 	go func() {
@@ -216,12 +228,20 @@ func StartOwned(configJSON, owner string) string {
 	}()
 
 	go func() {
+		controller.Lock()
+		if controller.generation == generation {
+			controller.stage = "runtime-serving"
+		}
+		controller.Unlock()
 		serveErr := app.Serve(ctx, listener)
 
 		controller.Lock()
 		if controller.generation == generation {
 			if serveErr != nil && ctx.Err() == nil {
-				controller.lastError = serveErr.Error()
+				controller.lastError = "listener stopped: " + serveErr.Error()
+				controller.stage = "listener-stopped"
+			} else if ctx.Err() != nil {
+				controller.stage = "stopped"
 			}
 			controller.cancel = nil
 			controller.done = nil
@@ -233,6 +253,15 @@ func StartOwned(configJSON, owner string) string {
 	}()
 
 	return ""
+}
+
+func setControllerError(stage string, err error) {
+	controller.Lock()
+	controller.stage = stage
+	if err != nil {
+		controller.lastError = err.Error()
+	}
+	controller.Unlock()
 }
 
 func Stop() { stopOwned("") }
@@ -302,6 +331,13 @@ func LastError() string {
 	return controller.lastError
 }
 
+// Stage reports the last lifecycle stage for Android diagnostics.
+func Stage() string {
+	controller.Lock()
+	defer controller.Unlock()
+	return controller.stage
+}
+
 func StatusJSON() string {
 	status := map[string]any{
 		"version":        buildversion.Current,
@@ -310,6 +346,7 @@ func StatusJSON() string {
 		"listener_ready": ListenerReady(),
 		"socks":          "127.0.0.1:1080",
 		"last_error":     LastError(),
+		"stage":          Stage(),
 	}
 	data, err := json.Marshal(status)
 	if err != nil {

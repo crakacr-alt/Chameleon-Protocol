@@ -5,4 +5,4 @@
 // built from a source archive still report the correct version.
 package version
 
-const Current = "1.0.6"
+const Current = "1.0.7-alpha"
