@@ -66,7 +66,11 @@ func PrepareVPNConfig(configJSON string) string {
 		ServerName:   cfg.TLSServerName,
 		PinnedSHA256: cfg.TLSFingerprint,
 	}
-	const probeTimeout = 2500 * time.Millisecond
+	// Mobile radio wake-up plus the Server-2 -> WireGuard -> Server-1 hop can
+	// exceed a couple of seconds even when the service is healthy. A short
+	// preflight deadline made Android report a TLS context deadline before the
+	// first authenticated response could return.
+	const probeTimeout = 8 * time.Second
 
 	selectedTCP := ""
 	probeFailures := make([]string, 0, 4)
@@ -126,9 +130,10 @@ func PrepareVPNConfig(configJSON string) string {
 	cfg.UDPMode = "auto"
 	if strings.TrimSpace(cfg.QUICServer) != "" {
 		for _, endpoint := range preferredEndpoints(cfg.QUICServer, "443") {
-			probeCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+			const udpProbeTimeout = 6 * time.Second
+			probeCtx, cancel := context.WithTimeout(context.Background(), udpProbeTimeout)
 			session, probeErr := tunnel.DialQUICDatagramSession(
-				probeCtx, endpoint, cfg.PSK, 1500*time.Millisecond, tlsCfg,
+				probeCtx, endpoint, cfg.PSK, udpProbeTimeout, tlsCfg,
 			)
 			cancel()
 			if probeErr == nil {

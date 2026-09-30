@@ -9,6 +9,7 @@
 - TLS ClientHello ограничен X25519/P-256: Android/mobile relay paths больше не получают большой гибридный ML-KEM key share, который мог быть отброшен до handshake и отображался как `Remote transport FAIL`.
 - Добавлены диагностические stage/error логи для remote preflight, SOCKS listener, `VpnService.Builder.establish()` и tun2socks; причина `Listener stopped` теперь сохраняется в runtime status.
 - Ошибки TLS/QUIC/TCP preflight теперь содержат конкретный endpoint и текст последней ошибки вместо общего сообщения.
+- Увеличены таймауты Android preflight до 8 секунд для TLS и 6 секунд для QUIC, чтобы не обрывать рабочий relay на задержках мобильной сети.
 
 ### Compatibility
 
