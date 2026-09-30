@@ -8,7 +8,7 @@
       "date": "2026-10-01",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.10-alpha/Chameleon-Android-1.0.10-alpha.apk",
-      "sha256": "",
+      "sha256": "7ecb8116f7d6b9c139158b28d958e730d330d1752fdcc5718ceb6a74d5a9b46f",
       "changes": [
         "Старые профили с CHAMELEON_SERVER автоматически получают TCP fallback.",
         "WireGuard relay-профили явно содержат CHAMELEON_TCP_SERVER.",
