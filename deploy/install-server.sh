@@ -320,6 +320,7 @@ write_client_profile() {
   umask 077
   cat >"$CLIENT_FILE" <<EOF
 CHAMELEON_SERVER=$host:$port
+CHAMELEON_TCP_SERVER=$host:$port
 CHAMELEON_QUIC_SERVER=$host:$port
 CHAMELEON_TLS_SERVER=$host:$port
 CHAMELEON_TUNNEL_PSK=$psk

@@ -1,7 +1,23 @@
 {
   "schema": 1,
-  "latest": "1.0.9-alpha",
+  "latest": "1.0.10-alpha",
   "releases": [
+    {
+      "version": "1.0.10-alpha",
+      "protocol": "1.0.6-compatible",
+      "date": "2026-10-01",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.10-alpha/Chameleon-Android-1.0.10-alpha.apk",
+      "sha256": "",
+      "changes": [
+        "Старые профили с CHAMELEON_SERVER автоматически получают TCP fallback.",
+        "WireGuard relay-профили явно содержат CHAMELEON_TCP_SERVER.",
+        "Doctor корректно показывает TCP endpoint для TCP-only профилей.",
+        "После импорта приложение показывает фактически сохранённые endpoint и transport.",
+        "Совместимо с сервером Chameleon 1.0.6; новые ключи не требуются."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.0.9-alpha",
       "protocol": "1.0.6-compatible",

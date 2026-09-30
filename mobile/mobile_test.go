@@ -39,6 +39,28 @@ CHAMELEON_TLS_FINGERPRINT=aabbcc
 	}
 }
 
+func TestBuildConfigFromTCPOnlyRelayProfile(t *testing.T) {
+	profile := `
+CHAMELEON_TCP_SERVER=80.86.216.169:9443
+CHAMELEON_TCP_TRANSPORT=tcp
+CHAMELEON_TUNNEL_PSK=0123456789abcdef
+`
+	cfg := BuildConfig(profile, "/tmp/chameleon", "proxy")
+	if strings.HasPrefix(cfg, "ERROR:") {
+		t.Fatal(cfg)
+	}
+	var parsed clientconfig.Config
+	if err := json.Unmarshal([]byte(cfg), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.TCPServer != "80.86.216.169:9443" || parsed.TCPTransport != "tcp" {
+		t.Fatalf("TCP relay was not preserved: %+v", parsed)
+	}
+	if parsed.TLSServer != "" || parsed.QUICServer != "" {
+		t.Fatalf("TCP-only profile unexpectedly gained TLS/QUIC endpoints: %+v", parsed)
+	}
+}
+
 func TestRejectUnknownMode(t *testing.T) {
 	got := BuildConfig("", "", "mystery")
 	if !strings.HasPrefix(got, "ERROR:") {

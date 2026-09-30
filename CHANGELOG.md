@@ -2,6 +2,21 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.10-alpha] - 2026-10-01
+
+### Fixed
+
+- Старые профили с одним `CHAMELEON_SERVER` теперь автоматически получают TCP fallback.
+- Relay-профили WireGuard теперь явно содержат `CHAMELEON_TCP_SERVER`.
+- Doctor показывает TCP endpoint для TCP-only профилей.
+- После импорта Android показывает endpoint и transport, фактически записанные в `client.json`.
+
+### Compatibility
+
+- сервер Chameleon 1.0.6;
+- wire protocol 1.0.x без изменений;
+- существующие PSK и TLS profiles сохраняются.
+
 ## [Android 1.0.9-alpha] - 2026-09-30
 
 ### Fixed

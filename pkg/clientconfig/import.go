@@ -54,6 +54,12 @@ func ImportProfile(r io.Reader) (Config, error) {
 	if cfg.TLSServer == "" && cfg.Server != "" {
 		cfg.TLSServer = cfg.Server
 	}
+	if cfg.TCPServer == "" && cfg.Server != "" {
+		// Older relay profiles predate the explicit TCP key. Preserve their
+		// raw Chameleon fallback so mobile clients can still reach a relay when
+		// TLS/QUIC payloads are blocked after TCP connect.
+		cfg.TCPServer = cfg.Server
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}

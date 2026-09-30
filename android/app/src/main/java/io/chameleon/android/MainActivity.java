@@ -395,7 +395,15 @@ public final class MainActivity extends Activity {
 
             AppFiles.writeConfig(this, config);
             AppFiles.setRuntimeMode(this, mode);
-            Toast.makeText(this, "Профиль импортирован", Toast.LENGTH_SHORT).show();
+            JSONObject saved = new JSONObject(AppFiles.readConfig(this));
+            String importedEndpoint = saved.optString("tls_server",
+                    saved.optString("quic_server",
+                            saved.optString("tcp_server", "—")));
+            String importedTransport = saved.optString("tcp_transport", "auto");
+            Toast.makeText(this,
+                    "Профиль импортирован: " + importedEndpoint
+                            + " • " + importedTransport.toUpperCase(),
+                    Toast.LENGTH_LONG).show();
             refreshState();
         } catch (Exception error) {
             new AlertDialog.Builder(this)
@@ -454,7 +462,8 @@ public final class MainActivity extends Activity {
                 String error = Mobile.validateConfig(config);
                 JSONObject json = new JSONObject(config);
                 String server = json.optString("tls_server",
-                        json.optString("quic_server", "—"));
+                        json.optString("quic_server",
+                                json.optString("tcp_server", "—")));
                 String mode = json.optString("mode", "smart");
                 boolean listenerReady = Mobile.listenerReady();
                 String listener = listenerReady

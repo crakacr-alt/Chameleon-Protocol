@@ -32,6 +32,19 @@ CHAMELEON_UDP_MODE=auto
 	}
 }
 
+func TestImportLegacyProfileAddsTCPFallback(t *testing.T) {
+	cfg, err := ImportProfile(strings.NewReader(`
+CHAMELEON_SERVER=relay.example:9443
+CHAMELEON_TUNNEL_PSK=0123456789abcdef
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TCPServer != "relay.example:9443" {
+		t.Fatalf("legacy profile did not get TCP fallback: %+v", cfg)
+	}
+}
+
 func TestSaveLoadPermissionsAndDurations(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg := Default()
