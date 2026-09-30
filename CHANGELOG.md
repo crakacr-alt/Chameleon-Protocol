@@ -10,6 +10,7 @@
 - Добавлены диагностические stage/error логи для remote preflight, SOCKS listener, `VpnService.Builder.establish()` и tun2socks; причина `Listener stopped` теперь сохраняется в runtime status.
 - Ошибки TLS/QUIC/TCP preflight теперь содержат конкретный endpoint и текст последней ошибки вместо общего сообщения.
 - Увеличены таймауты Android preflight до 8 секунд для TLS и 6 секунд для QUIC, чтобы не обрывать рабочий relay на задержках мобильной сети.
+- TLS preflight теперь отправляет ClientHello через split-early dialer, как и адаптивный runtime, чтобы DPI не отбрасывал первый пакет до запуска VPN listener.
 
 ### Compatibility
 

@@ -14,6 +14,7 @@
         "Подробные Logcat stage/error логи для remote preflight, SOCKS listener, Android TUN и tun2socks.",
         "Ошибки TLS/QUIC/TCP preflight показывают endpoint и фактическую причину.",
         "Таймауты Android preflight увеличены до 8 секунд для TLS и 6 секунд для QUIC для мобильных relay/WireGuard путей.",
+        "TLS preflight применяет split-early к первому ClientHello, синхронизируя проверку с adaptive runtime и обходом DPI.",
         "Совместимо с сервером Chameleon 1.0.6; wire protocol 1.0.x не изменён."
       ],
       "vpn_min_sdk": 29

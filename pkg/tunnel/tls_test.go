@@ -17,9 +17,31 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/dpi"
 )
+
+type probeRecordingConn struct {
+	net.Conn
+	mu     sync.Mutex
+	writes []int
+}
+
+func (c *probeRecordingConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	c.writes = append(c.writes, len(p))
+	c.mu.Unlock()
+	return c.Conn.Write(p)
+}
+
+func (c *probeRecordingConn) writeSizes() []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]int(nil), c.writes...)
+}
 
 func testTLSCertificate(t *testing.T) (tls.Certificate, []byte) {
 	t.Helper()
@@ -115,6 +137,60 @@ func TestTLSFrontTunnelEndToEndWithPinnedCertificate(t *testing.T) {
 	case <-serverDone:
 	case <-time.After(2 * time.Second):
 		t.Fatal("TLS tunnel handler did not stop")
+	}
+}
+
+func TestProbeTLSWithDialerCanSplitFirstClientHello(t *testing.T) {
+	cert, der := testTLSCertificate(t)
+	base, err := NewServer(ServerConfig{
+		PSK:              "secret",
+		HandshakeTimeout: time.Second,
+		DialTimeout:      time.Second,
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			upstreamServer, upstreamEcho := net.Pipe()
+			go func() {
+				_, _ = io.Copy(upstreamEcho, upstreamEcho)
+				_ = upstreamEcho.Close()
+			}()
+			return upstreamServer, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	front, err := NewTLSFront(base, TLSFrontConfig{TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clientSide, serverSide := net.Pipe()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- front.HandleConn(context.Background(), serverSide) }()
+
+	sum := sha256.Sum256(der)
+	wrapped := &probeRecordingConn{Conn: clientSide}
+	_, err = ProbeTLSWithDialer(
+		context.Background(),
+		"localhost:443",
+		"secret",
+		time.Second,
+		TLSClientConfig{ServerName: "localhost", PinnedSHA256: hex.EncodeToString(sum[:])},
+		func(context.Context, string) (net.Conn, error) {
+			return dpi.NewFirstWriteConn(wrapped, dpi.DefaultStrategies()[1]), nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("TLS probe server did not stop")
+	}
+
+	writes := wrapped.writeSizes()
+	if len(writes) < 2 || writes[0] != 1 {
+		t.Fatalf("expected split-early ClientHello writes, got %v", writes)
 	}
 }
 

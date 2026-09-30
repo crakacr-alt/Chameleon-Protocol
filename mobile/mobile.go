@@ -13,6 +13,7 @@ import (
 
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientapp"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientconfig"
+	"github.com/crakacr-alt/Chameleon-Protocol/pkg/dpi"
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/tunnel"
 	buildversion "github.com/crakacr-alt/Chameleon-Protocol/pkg/version"
 )
@@ -75,9 +76,21 @@ func PrepareVPNConfig(configJSON string) string {
 	selectedTCP := ""
 	probeFailures := make([]string, 0, 4)
 	if strings.TrimSpace(cfg.TLSServer) != "" {
+		// Some mobile paths accept the TCP connection but drop a one-piece TLS
+		// ClientHello. Keep preflight consistent with the adaptive runtime's
+		// learned split-early strategy so a successful probe proves the actual
+		// first flight can cross the relay.
+		probeDial := func(ctx context.Context, address string) (net.Conn, error) {
+			dialer := &net.Dialer{Timeout: probeTimeout}
+			conn, err := dialer.DialContext(ctx, "tcp", address)
+			if err != nil {
+				return nil, err
+			}
+			return dpi.NewFirstWriteConn(conn, splitEarlyStrategy()), nil
+		}
 		for _, endpoint := range preferredEndpoints(cfg.TLSServer, "443") {
 			probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-			_, probeErr := tunnel.ProbeTLSContext(probeCtx, endpoint, cfg.PSK, probeTimeout, tlsCfg)
+			_, probeErr := tunnel.ProbeTLSWithDialer(probeCtx, endpoint, cfg.PSK, probeTimeout, tlsCfg, probeDial)
 			cancel()
 			if probeErr == nil {
 				cfg.TLSServer = endpoint
@@ -150,6 +163,15 @@ func PrepareVPNConfig(configJSON string) string {
 		return "ERROR: " + err.Error()
 	}
 	return string(data)
+}
+
+func splitEarlyStrategy() dpi.Strategy {
+	for _, strategy := range dpi.DefaultStrategies() {
+		if strategy.Name == "split-early" {
+			return strategy
+		}
+	}
+	return dpi.Strategy{}
 }
 
 func preferredEndpoints(endpoint, preferredPort string) []string {

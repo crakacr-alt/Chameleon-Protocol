@@ -50,6 +50,38 @@ func ProbeTLSContext(
 	return ProbeResult{Transport: "tls", Latency: time.Since(started)}, nil
 }
 
+// ProbeTLSWithDialer is the injectable form of ProbeTLSContext. The dialer
+// wraps the raw TCP connection below crypto/tls, so callers can apply a
+// first-flight workaround (for example, splitting the ClientHello) before
+// the mobile network sees it.
+func ProbeTLSWithDialer(
+	ctx context.Context,
+	serverAddress string,
+	psk string,
+	timeout time.Duration,
+	cfg TLSClientConfig,
+	dial RawDialFunc,
+) (ProbeResult, error) {
+	if dial == nil {
+		return ProbeResult{}, fmt.Errorf("probe dialer is nil")
+	}
+	started := time.Now()
+	conn, err := DialTLSContextWithDialer(
+		ctx,
+		serverAddress,
+		probeSessionDestination,
+		psk,
+		timeout,
+		cfg,
+		dial,
+	)
+	if err != nil {
+		return ProbeResult{Transport: "tls", Latency: time.Since(started)}, err
+	}
+	_ = conn.Close()
+	return ProbeResult{Transport: "tls", Latency: time.Since(started)}, nil
+}
+
 // ProbeQUICContext measures QUIC/TLS 1.3 + Chameleon PSK authentication.
 func ProbeQUICContext(
 	ctx context.Context,
