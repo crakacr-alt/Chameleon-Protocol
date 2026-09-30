@@ -8,7 +8,7 @@
       "date": "2026-09-30",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.7-alpha/Chameleon-Android-1.0.7-alpha.apk",
-      "sha256": "",
+      "sha256": "0a9797825eabcd2e3a0f0619e9d5ed6cf73d43193b865a1ed9a5e34090a95996",
       "changes": [
         "Компактный TLS ClientHello (X25519/P-256) исправляет mobile/relay handshake failures до появления Remote transport FAIL.",
         "Подробные Logcat stage/error логи для remote preflight, SOCKS listener, Android TUN и tun2socks.",
