@@ -51,7 +51,7 @@ jobs:
           fi
           echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
           echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
-          # GitHub-hosted Android images already include accepted SDK licenses.\n          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          # GitHub-hosted Android images already include accepted SDK licenses.\n          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;27.3.13750724"
 
       - name: Test Go core
         run: go test ./...
@@ -78,20 +78,47 @@ jobs:
             -o android/app/libs/chameleon.aar \
             ./mobile
 
-      - name: Fetch pinned open-source tun2socks AAR
+      - name: Build pinned tun2socks with Inspector PCAP hook
         shell: bash
         run: |
           set -euo pipefail
+          hev_dir="$RUNNER_TEMP/hev-socks5-tunnel"
+          rm -rf "$hev_dir"
+          git clone --recursive https://github.com/heiher/hev-socks5-tunnel.git "$hev_dir"
+          git -C "$hev_dir" checkout 2cdc169a248ced7097a7931aea5bf81540dc7759
+          git -C "$hev_dir" submodule update --init --recursive
+
+          python3 android/tools/patch-hev-capture.py "$hev_dir"
+
+          ln -sfn . "$hev_dir/jni"
+          ndk_build="$ANDROID_SDK_ROOT/ndk/27.3.13750724/ndk-build"
+          "$ndk_build" -C "$hev_dir" clean
+          "$ndk_build" -C "$hev_dir" APP_MODULES=hev-socks5-tunnel -j"$(nproc)"
+
+          rm -rf "$hev_dir/aar" "$hev_dir/classes"
+          mkdir -p "$hev_dir/aar/jni"
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            mkdir -p "$hev_dir/aar/jni/$abi"
+            cp "$hev_dir/libs/$abi/libhev-socks5-tunnel.so" "$hev_dir/aar/jni/$abi/"
+          done
+
+          javac --release 8 -Xlint:-options -d "$hev_dir/classes" \
+            "$hev_dir/android/hev/htproxy/TProxyService.java"
+          (cd "$hev_dir/classes" && jar cf "$hev_dir/aar/classes.jar" .)
+
+          cat > "$hev_dir/aar/proguard.txt" <<'EOF'
+          -keep class hev.htproxy.** { *; }
+          EOF
+          cat > "$hev_dir/aar/AndroidManifest.xml" <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="hev.socks5.tunnel">
+            <uses-sdk android:minSdkVersion="29"/>
+          </manifest>
+          EOF
+
           mkdir -p android/app/libs
-          url="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.18.0/hev-socks5-tunnel.aar"
-          expected="15ec8ed121663b562c99caa5bb602d1009f24e5b09e733438b81988f12feaaab"
-          out="android/app/libs/hev-socks5-tunnel.aar"
-          curl -fL --retry 3 "$url" -o "$out"
-          actual="$(sha256sum "$out" | awk '{print $1}')"
-          test "$actual" = "$expected" || {
-            echo "hev-socks5-tunnel AAR checksum mismatch" >&2
-            exit 1
-          }
+          (cd "$hev_dir/aar" && zip -q -r "$GITHUB_WORKSPACE/android/app/libs/hev-socks5-tunnel.aar" .)
+          sha256sum android/app/libs/hev-socks5-tunnel.aar
 
       - uses: gradle/actions/setup-gradle@v4
         with:
