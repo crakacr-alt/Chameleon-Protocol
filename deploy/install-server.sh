@@ -9,6 +9,8 @@ CERT_FILE="$ENV_DIR/tls.crt"
 KEY_FILE="$ENV_DIR/tls.key"
 DECOY_FILE="$ENV_DIR/decoy.html"
 CLIENT_FILE="$ENV_DIR/client-profile.txt"
+CLIENT_V2_FILE="$ENV_DIR/client-profile-v2.txt"
+CLIENTS_FILE="$ENV_DIR/clients.json"
 SERVICE_FILE="/etc/systemd/system/chameleon-tunnel.service"
 HEALTH_SERVICE="/etc/systemd/system/chameleon-health.service"
 HEALTH_TIMER="/etc/systemd/system/chameleon-health.timer"
@@ -37,7 +39,7 @@ install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     log "installing base packages"
     apt-get update -y
-    apt-get install -y --no-install-recommends git ca-certificates curl openssl iproute2
+    apt-get install -y --no-install-recommends git ca-certificates curl openssl iproute2 python3
     return
   fi
 
@@ -183,6 +185,57 @@ ensure_psk() {
   printf '%s' "$value"
 }
 
+ensure_auth_v2_client() {
+  local credentials=""
+  if [ -s "$CLIENTS_FILE" ]; then
+    credentials="$(python3 - "$CLIENTS_FILE" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+for client in data.get("clients", []):
+    if client.get("enabled") and client.get("id") and client.get("secret"):
+        print(client["id"] + "|" + client["secret"])
+        break
+PY
+)"
+  fi
+
+  if [ -z "$credentials" ]; then
+    local client_id client_secret
+    client_id="${CHAMELEON_CLIENT_ID:-$(cat /proc/sys/kernel/random/uuid)}"
+    client_secret="${CHAMELEON_CLIENT_SECRET:-$(openssl rand -hex 32)}"
+    CLIENT_ID="$client_id" CLIENT_SECRET="$client_secret" CLIENTS_FILE="$CLIENTS_FILE" python3 <<'PY'
+import json, os
+path = os.environ["CLIENTS_FILE"]
+client = {
+    "id": os.environ["CLIENT_ID"],
+    "name": "Primary Android",
+    "secret": os.environ["CLIENT_SECRET"],
+    "enabled": True,
+}
+data = {"schema": 1, "clients": []}
+if os.path.exists(path):
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if data.get("schema") != 1 or not isinstance(data.get("clients"), list):
+        raise SystemExit("unsupported clients.json schema")
+data["clients"].append(client)
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+os.chmod(tmp, 0o640)
+os.replace(tmp, path)
+PY
+    credentials="$client_id|$client_secret"
+  fi
+
+  chown root:chameleon "$CLIENTS_FILE"
+  chmod 0640 "$CLIENTS_FILE"
+  printf '%s' "$credentials"
+}
+
 ensure_certificate() {
   if [ -n "${CHAMELEON_TLS_CERT:-}" ] || [ -n "${CHAMELEON_TLS_KEY:-}" ]; then
     [ -n "${CHAMELEON_TLS_CERT:-}" ] && [ -n "${CHAMELEON_TLS_KEY:-}" ] ||       die "set both CHAMELEON_TLS_CERT and CHAMELEON_TLS_KEY"
@@ -253,6 +306,7 @@ write_environment() {
   umask 077
   cat >"$ENV_FILE" <<EOF
 CHAMELEON_TUNNEL_PSK=$psk
+CHAMELEON_CLIENTS_FILE=$CLIENTS_FILE
 CHAMELEON_LISTEN=:$port
 CHAMELEON_QUIC_LISTEN=:$port
 CHAMELEON_TLS_CERT=$CERT_FILE
@@ -270,6 +324,7 @@ install_units() {
   install -o root -g root -m 0644     "$src/deploy/chameleon-health.timer" "$HEALTH_TIMER"
   install -o root -g root -m 0755     "$src/deploy/healthcheck.sh" "$LIB_DIR/healthcheck.sh"
   install -o root -g root -m 0755     "$src/deploy/chameleonctl" "$BIN_CTL"
+  install -o root -g root -m 0755     "$src/deploy/manage-clients.py" "$LIB_DIR/manage-clients.py"
 
   systemctl daemon-reload
   systemctl enable chameleon-tunnel.service >/dev/null
@@ -315,9 +370,11 @@ detect_public_host() {
   printf '%s' "$value"
 }
 
-write_client_profile() {
-  local host="$1" port="$2" psk="$3" fingerprint="$4"
+write_client_profiles() {
+  local host="$1" port="$2" psk="$3" fingerprint="$4" client_id="$5" client_secret="$6"
   umask 077
+
+  # Legacy profile remains available during the Auth v2 migration window.
   cat >"$CLIENT_FILE" <<EOF
 CHAMELEON_SERVER=$host:$port
 CHAMELEON_QUIC_SERVER=$host:$port
@@ -326,12 +383,21 @@ CHAMELEON_TUNNEL_PSK=$psk
 CHAMELEON_TLS_FINGERPRINT=$fingerprint
 CHAMELEON_TCP_TRANSPORT=tls
 CHAMELEON_UDP_MODE=auto
-
-Linux local proxy example:
-  export CHAMELEON_TUNNEL_PSK='$psk'
-  chameleon-proxy --chameleon-quic='$host:$port' --chameleon-tls='$host:$port' --tls-fingerprint='$fingerprint'
 EOF
   chmod 0600 "$CLIENT_FILE"
+
+  # Recommended profile: independently revocable Auth v2 client.
+  cat >"$CLIENT_V2_FILE" <<EOF
+CHAMELEON_SERVER=$host:$port
+CHAMELEON_QUIC_SERVER=$host:$port
+CHAMELEON_TLS_SERVER=$host:$port
+CHAMELEON_CLIENT_ID=$client_id
+CHAMELEON_CLIENT_SECRET=$client_secret
+CHAMELEON_TLS_FINGERPRINT=$fingerprint
+CHAMELEON_TCP_TRANSPORT=tls
+CHAMELEON_UDP_MODE=auto
+EOF
+  chmod 0600 "$CLIENT_V2_FILE"
 }
 
 verify_service() {
@@ -343,14 +409,19 @@ verify_service() {
     die "chameleon-tunnel did not start"
   }
 
-  if ! curl -kfsS --connect-timeout 4 --max-time 6     "https://127.0.0.1:$port/" >/dev/null; then
-    journalctl -u chameleon-tunnel.service -n 50 --no-pager || true
-    die "local TLS health check failed"
-  fi
+  local ready=0 attempt
+  for attempt in $(seq 1 12); do
+    if curl -kfsS --connect-timeout 2 --max-time 3 "https://127.0.0.1:$port/" >/dev/null 2>&1 &&
+       ss -H -lun "sport = :$port" 2>/dev/null | grep -q .; then
+      ready=1
+      break
+    fi
+    sleep 0.5
+  done
 
-  if ! ss -H -lun "sport = :$port" 2>/dev/null | grep -q .; then
+  if [ "$ready" -ne 1 ]; then
     journalctl -u chameleon-tunnel.service -n 50 --no-pager || true
-    die "QUIC UDP listener is not active on port $port"
+    die "local TLS/QUIC health check did not become ready within 6 seconds"
   fi
 }
 
@@ -359,10 +430,13 @@ main() {
   ensure_go
   ensure_user
 
-  local src port psk fingerprint public_host
+  local src port psk fingerprint public_host auth_v2 client_id client_secret
   src="$(prepare_source)"
   port="$(choose_port)"
   psk="$(ensure_psk)"
+  auth_v2="$(ensure_auth_v2_client)"
+  client_id="${auth_v2%%|*}"
+  client_secret="${auth_v2#*|}"
 
   ensure_certificate
   ensure_decoy
@@ -378,18 +452,20 @@ main() {
       awk '{print $2}'
   )"
   public_host="$(detect_public_host)"
-  write_client_profile "$public_host" "$port" "$psk" "$fingerprint"
+  write_client_profiles "$public_host" "$port" "$psk" "$fingerprint" "$client_id" "$client_secret"
 
   printf '\n'
   log "installation complete"
   printf 'Server:      %s:%s\n' "$public_host" "$port"
   printf 'TLS pin:     %s\n' "$fingerprint"
-  printf 'Client info: %s\n' "$CLIENT_FILE"
+  printf 'Client v2:   %s\n' "$CLIENT_V2_FILE"
+  printf 'Legacy info: %s\n' "$CLIENT_FILE"
+  printf 'Auth DB:     %s\n' "$CLIENTS_FILE"
   printf 'Status:      chameleonctl status\n'
   printf 'Logs:        chameleonctl logs\n'
   printf 'Health:      chameleonctl health\n'
   printf '\n'
-  printf 'Secret PSK is stored only in %s and %s (root-readable).\n' "$ENV_FILE" "$CLIENT_FILE"
+  printf 'Auth v2 client secret is stored in %s and %s; legacy PSK remains in %s and %s during migration.\n' "$CLIENTS_FILE" "$CLIENT_V2_FILE" "$ENV_FILE" "$CLIENT_FILE"
 }
 
 main "$@"

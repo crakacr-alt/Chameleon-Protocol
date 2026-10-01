@@ -24,9 +24,11 @@ const (
 )
 
 type clientHello struct {
+	Version     byte
 	Timestamp   int64
 	Nonce       [nonceSize]byte
 	Destination string
+	ClientID    string
 }
 
 // buildClientHello keeps the destination and timestamp encrypted.
@@ -101,6 +103,7 @@ func readClientHello(r io.Reader, psk string, now time.Time, maxSkew time.Durati
 		return hello, fmt.Errorf("invalid tunnel hello")
 	}
 
+	hello.Version = helloVersion
 	hello.Timestamp = int64(binary.BigEndian.Uint64(plain[1:9]))
 	destLen := int(binary.BigEndian.Uint16(plain[9:11]))
 	if destLen <= 0 || destLen > maxDestinationLen || len(plain) != 11+destLen {

@@ -2,6 +2,43 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.1.0-alpha] - 2026-10-02
+
+### Added
+
+- Auth v2 with per-client ID/secret, independently revocable clients and optional expiry.
+- challenge-response authentication without dependence on the Android device clock;
+- Auth v2 support across TCP, TLS, QUIC streams and QUIC datagram sessions;
+- server-side `clients.json` plus `chameleonctl` client management commands;
+- generated `client-profile-v2.txt` and `client-profile-relay-v2.txt`;
+- Android Inspector with real TUN packet capture and standard DLT_RAW PCAP export;
+- live flow analysis with best-effort Android UID/package attribution, DNS, TLS SNI and HTTP metadata;
+- local Inspector CA generation with the normal Android certificate installer.
+
+### Changed
+
+- Smart is now a real full-device Android VpnService/TUN mode using direct + Chameleon routing.
+- old Android Proxy mode is replaced by Inspector.
+- VPN remains strict Chameleon-only.
+- client config schema is now v2; schema v1 legacy profiles migrate automatically.
+- legacy global PSK remains accepted during the migration window.
+
+### Security
+
+- Auth v2 clients can be disabled or removed independently.
+- unknown/disabled client IDs continue through a fake challenge path before rejection to reduce trivial client-ID probing.
+- Inspector packet capture is enabled only after explicit user selection of Inspector.
+- certificate pinning bypass is not implemented.
+
+### Validation
+
+- full `go test ./...` passed locally on Go 1.27.1;
+- deployment shell scripts passed `bash -n`;
+- Python helper scripts passed `py_compile`;
+- patched tun2socks native code compiled successfully before CI;
+- live Auth v2 TLS relay `80.86.216.169:443 -> HAProxy -> WireGuard -> exit` returned public IP `88.210.20.127`;
+- the existing legacy PSK profile continued to work after the live server upgrade.
+
 ## [Android 1.0.12-alpha] - 2026-10-01
 
 ### Fixed

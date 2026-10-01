@@ -16,6 +16,7 @@ type DialContextFunc func(context.Context, string, string) (net.Conn, error)
 // ServerConfig configures the authenticated TCP tunnel server.
 type ServerConfig struct {
 	PSK                      string
+	Clients                  *ClientRegistry
 	HandshakeTimeout         time.Duration
 	DialTimeout              time.Duration
 	MaxClockSkew             time.Duration
@@ -33,8 +34,8 @@ type Server struct {
 
 // NewServer validates config and creates a tunnel server.
 func NewServer(cfg ServerConfig) (*Server, error) {
-	if stringsTrim(cfg.PSK) == "" {
-		return nil, fmt.Errorf("psk must not be empty")
+	if stringsTrim(cfg.PSK) == "" && (cfg.Clients == nil || cfg.Clients.Len() == 0) {
+		return nil, fmt.Errorf("at least one tunnel authentication source is required")
 	}
 	if cfg.HandshakeTimeout <= 0 {
 		cfg.HandshakeTimeout = 8 * time.Second
@@ -87,15 +88,7 @@ func (s *Server) HandleConn(ctx context.Context, conn net.Conn) error {
 	if err := conn.SetDeadline(time.Now().Add(s.cfg.HandshakeTimeout)); err != nil {
 		return err
 	}
-	hello, err := readClientHello(conn, s.cfg.PSK, time.Now(), s.cfg.MaxClockSkew)
-	if err != nil {
-		return err
-	}
-	if !s.acceptNonce(hello.Nonce, time.Now()) {
-		return fmt.Errorf("replayed tunnel hello")
-	}
-
-	cipher, err := deriveCipher(s.cfg.PSK, hello.Nonce)
+	hello, cipher, err := s.authenticateConn(conn)
 	if err != nil {
 		return err
 	}

@@ -23,6 +23,7 @@ public final class ChameleonVpnService extends VpnService {
     private static final String TAG = "ChameleonVPN";
     static final String ACTION_START = "io.chameleon.android.VPN_START";
     static final String ACTION_STOP = "io.chameleon.android.VPN_STOP";
+    static final String EXTRA_MODE = "io.chameleon.android.VPN_MODE";
     static final String RUNTIME_OWNER = "vpn";
 
     private static final String CHANNEL_ID = "chameleon_vpn";
@@ -34,6 +35,7 @@ public final class ChameleonVpnService extends VpnService {
     private final Object lock = new Object();
     private ParcelFileDescriptor tun;
     private volatile boolean stopping;
+    private volatile String requestedMode = "vpn";
 
     static boolean running() { return active; }
     static boolean starting() { return starting; }
@@ -64,7 +66,12 @@ public final class ChameleonVpnService extends VpnService {
             return START_STICKY;
         }
 
-        startForeground(NOTIFICATION_ID, notification("Подключение VPN…"));
+        String mode = intent == null ? null : intent.getStringExtra(EXTRA_MODE);
+        if (mode == null || mode.isEmpty()) mode = AppFiles.runtimeMode(this);
+        if (!"smart".equals(mode) && !"inspector".equals(mode) && !"vpn".equals(mode)) mode = "vpn";
+        requestedMode = mode;
+
+        startForeground(NOTIFICATION_ID, notification("Подключение " + mode.toUpperCase() + "…"));
         AppFiles.clearLastVpnError(this);
         stopping = false;
         starting = true;
@@ -81,14 +88,25 @@ public final class ChameleonVpnService extends VpnService {
             stopService(new Intent(this, ChameleonService.class));
             Mobile.stopOwned(ChameleonService.RUNTIME_OWNER);
 
-            AppFiles.setRuntimeMode(this, "vpn");
-            AppFiles.setCoreMode(this, "proxy");
+            String runtimeMode = requestedMode;
+            boolean smartMode = "smart".equals(runtimeMode);
+            boolean inspectorMode = "inspector".equals(runtimeMode);
+
+            AppFiles.setRuntimeMode(this, runtimeMode);
+            AppFiles.setCoreMode(this, smartMode ? "smart" : "proxy");
 
             notifyState("Проверка доступного транспорта…");
-            String vpnConfig = Mobile.prepareVPNConfig(AppFiles.readConfig(this));
+            String originalConfig = AppFiles.readConfig(this);
+            String vpnConfig = Mobile.prepareVPNConfig(originalConfig);
             if (vpnConfig.startsWith("ERROR:")) {
                 Log.e(TAG, "remote transport preflight failed: " + vpnConfig);
-                throw new IllegalStateException(vpnConfig.substring("ERROR:".length()).trim());
+                if (smartMode) {
+                    // Smart may continue direct when the Chameleon carrier is
+                    // temporarily unavailable. VPN and Inspector are strict.
+                    vpnConfig = originalConfig;
+                } else {
+                    throw new IllegalStateException(vpnConfig.substring("ERROR:".length()).trim());
+                }
             }
             JSONObject selected = new JSONObject(vpnConfig);
             String transport = selected.optString("tcp_transport", "auto");
@@ -101,9 +119,11 @@ public final class ChameleonVpnService extends VpnService {
                     + " endpoint=" + endpoint
                     + " udp=" + selected.optString("udp_mode", "auto"));
 
-            // Persist the authenticated/preflighted config. This keeps the next
-            // launch on the transport that was actually proven reachable.
-            AppFiles.writeConfig(this, vpnConfig);
+            // Persist only a successful prepared config. Smart can deliberately
+            // continue direct when remote preflight is temporarily unavailable.
+            if (!vpnConfig.equals(originalConfig) || !smartMode) {
+                AppFiles.writeConfig(this, vpnConfig);
+            }
 
             String error = Mobile.startOwned(vpnConfig, RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
@@ -136,7 +156,7 @@ public final class ChameleonVpnService extends VpnService {
             }
 
             synchronized (lock) { tun = established; }
-            writeTunConfig();
+            writeTunConfig(inspectorMode);
 
             if (!TProxyService.TProxyStartService(
                     AppFiles.tunConfigFile(this).getAbsolutePath(),
@@ -161,7 +181,12 @@ public final class ChameleonVpnService extends VpnService {
             starting = false;
             active = true;
             AppFiles.clearLastVpnError(this);
-            notifyState("VPN подключён • весь телефон через Chameleon");
+            String connectedText = smartMode
+                    ? "Smart VPN подключён • direct + Chameleon"
+                    : (inspectorMode
+                    ? "Inspector активен • PCAP запись включена"
+                    : "VPN подключён • весь телефон через Chameleon");
+            notifyState(connectedText);
             ChameleonWidget.updateAll(this);
             ChameleonTile.requestRefresh(this);
 
@@ -188,7 +213,16 @@ public final class ChameleonVpnService extends VpnService {
         }
     }
 
-    private void writeTunConfig() throws Exception {
+    private void writeTunConfig(boolean inspectorMode) throws Exception {
+        String capture = inspectorMode
+                ? "  pcap-file: '" + AppFiles.captureFile(this).getAbsolutePath().replace("'", "''") + "'\n"
+                : "";
+        if (inspectorMode && AppFiles.captureFile(this).exists()) {
+            // Each explicit Inspector start creates a fresh capture.
+            // Export is user-controlled from InspectorActivity.
+            AppFiles.captureFile(this).delete();
+        }
+
         String config =
                 "tunnel:\n" +
                 "  mtu: 1400\n" +
@@ -204,6 +238,7 @@ public final class ChameleonVpnService extends VpnService {
                 "  tcp-buffer-size: 65536\n" +
                 "  udp-recv-buffer-size: 524288\n" +
                 "  max-session-count: 2048\n" +
+                capture +
                 "  log-file: null\n" +
                 "  log-level: warn\n";
 

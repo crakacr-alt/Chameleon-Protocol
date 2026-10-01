@@ -25,6 +25,11 @@
 
         <activity android:name=".InstallerActivity" android:exported="false" />
         <activity android:name=".VersionActivity" android:exported="false" />
+        <activity android:name=".InspectorActivity" android:exported="false" />
+        <activity
+            android:name=".SmartToggleActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
 
         <activity
             android:name=".MainActivity"

@@ -60,6 +60,18 @@ func DialQUICContext(
 	tlsCfg TLSClientConfig,
 	quicCfg QUICConfig,
 ) (net.Conn, error) {
+	return DialQUICContextAuth(ctx, serverAddress, destination, ClientAuth{PSK: psk}, timeout, tlsCfg, quicCfg)
+}
+
+func DialQUICContextAuth(
+	ctx context.Context,
+	serverAddress string,
+	destination string,
+	auth ClientAuth,
+	timeout time.Duration,
+	tlsCfg TLSClientConfig,
+	quicCfg QUICConfig,
+) (net.Conn, error) {
 	if stringsTrim(serverAddress) == "" {
 		return nil, fmt.Errorf("QUIC server address must not be empty")
 	}
@@ -93,7 +105,7 @@ func DialQUICContext(
 		Stream: stream,
 		conn:   conn,
 	}
-	secure, err := clientHandshake(streamConn, destination, psk, timeout)
+	secure, err := clientHandshakeAuth(streamConn, destination, auth, timeout)
 	if err != nil {
 		_ = streamConn.Close()
 		return nil, err

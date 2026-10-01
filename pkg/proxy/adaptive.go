@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,7 +33,8 @@ type AdaptiveDialer struct {
 	Planner       *planner.Planner
 	Carriers      []carrier.Candidate
 	DPIStrategies []dpi.Strategy
-	PSK           string
+	PSK           string // legacy v1 compatibility
+	Auth          tunnel.ClientAuth
 	Purpose       string
 	Timeout       time.Duration
 	TLSConfig     tunnel.TLSClientConfig
@@ -323,6 +325,10 @@ func (a *AdaptiveDialer) dialPlan(
 	directDial TCPDialFunc,
 ) (net.Conn, error) {
 	strategy := plan.DPI.Strategy
+	auth := a.Auth
+	if !auth.UsesV2() && strings.TrimSpace(auth.PSK) == "" {
+		auth.PSK = a.PSK
+	}
 	switch plan.Carrier.Carrier.Kind {
 	case carrier.KindDirect:
 		conn, err := directDial(ctx, destination)
@@ -336,11 +342,11 @@ func (a *AdaptiveDialer) dialPlan(
 		if endpoint == "" {
 			return nil, fmt.Errorf("chameleon QUIC carrier has no endpoint")
 		}
-		return tunnel.DialQUICContext(
+		return tunnel.DialQUICContextAuth(
 			ctx,
 			endpoint,
 			destination,
-			a.PSK,
+			auth,
 			timeout,
 			a.TLSConfig,
 			tunnel.QUICConfig{},
@@ -351,7 +357,7 @@ func (a *AdaptiveDialer) dialPlan(
 		if endpoint == "" {
 			return nil, fmt.Errorf("chameleon TLS carrier has no endpoint")
 		}
-		return tunnel.DialTLSContextWithDialer(ctx, endpoint, destination, a.PSK, timeout, a.TLSConfig,
+		return tunnel.DialTLSContextWithDialerAuth(ctx, endpoint, destination, auth, timeout, a.TLSConfig,
 			func(ctx context.Context, address string) (net.Conn, error) {
 				conn, err := directDial(ctx, address)
 				if err != nil {
@@ -367,7 +373,7 @@ func (a *AdaptiveDialer) dialPlan(
 		if endpoint == "" {
 			return nil, fmt.Errorf("chameleon TCP carrier has no endpoint")
 		}
-		return tunnel.DialContextWithDialer(ctx, endpoint, destination, a.PSK, timeout,
+		return tunnel.DialContextWithDialerAuth(ctx, endpoint, destination, auth, timeout,
 			func(ctx context.Context, address string) (net.Conn, error) {
 				conn, err := directDial(ctx, address)
 				if err != nil {

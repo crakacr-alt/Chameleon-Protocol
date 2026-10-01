@@ -34,7 +34,9 @@ func main() {
 	tlsFingerprint := flag.String("tls-fingerprint", "", "optional pinned TLS certificate SHA-256 fingerprint")
 	relaySOCKS := flag.String("relay-socks", "", "optional existing SOCKS5 relay endpoint")
 	allowRemote := flag.Bool("allow-remote-socks", false, "allow SOCKS listener on non-loopback addresses")
-	psk := flag.String("psk", "", "PSK for --chameleon-tcp")
+	psk := flag.String("psk", "", "legacy PSK for Chameleon tunnel carriers")
+	clientID := flag.String("client-id", "", "Auth v2 client id; CHAMELEON_CLIENT_ID is preferred")
+	clientSecret := flag.String("client-secret", "", "Auth v2 client secret; CHAMELEON_CLIENT_SECRET is preferred")
 	stateDir := flag.String("state-dir", defaultStateDir(), "adaptive state directory")
 	timeout := flag.Duration("timeout", 8*time.Second, "outbound connection timeout")
 	directCooldown := flag.Duration("direct-cooldown", 10*time.Minute, "temporarily skip direct after all DPI strategies fail")
@@ -46,13 +48,17 @@ func main() {
 		return
 	}
 
-	tunnelPSK := *psk
-	if tunnelPSK == "" {
-		tunnelPSK = os.Getenv("CHAMELEON_TUNNEL_PSK")
+	tunnelPSK := firstNonEmpty(*psk, os.Getenv("CHAMELEON_TUNNEL_PSK"))
+	auth := tunnel.ClientAuth{
+		PSK:          tunnelPSK,
+		ClientID:     firstNonEmpty(*clientID, os.Getenv("CHAMELEON_CLIENT_ID")),
+		ClientSecret: firstNonEmpty(*clientSecret, os.Getenv("CHAMELEON_CLIENT_SECRET")),
 	}
-	if (*chameleonTCP != "" || *chameleonTLS != "" || *chameleonQUIC != "") && tunnelPSK == "" {
-		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required for Chameleon tunnel carriers")
-		os.Exit(2)
+	if *chameleonTCP != "" || *chameleonTLS != "" || *chameleonQUIC != "" {
+		if err := auth.Validate(); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
 	}
 	if !*allowRemote && !isLoopbackListen(*listen) {
 		fmt.Fprintln(os.Stderr, "error: non-loopback SOCKS listen requires --allow-remote-socks")
@@ -92,6 +98,7 @@ func main() {
 		Carriers:      carriers,
 		DPIStrategies: dpi.DefaultStrategies(),
 		PSK:           tunnelPSK,
+		Auth:          auth,
 		TLSConfig: tunnel.TLSClientConfig{
 			ServerName:         *tlsServerName,
 			InsecureSkipVerify: *tlsInsecure,
@@ -117,10 +124,10 @@ func main() {
 			if *chameleonQUIC == "" {
 				return nil, fmt.Errorf("--udp-mode=quic requires --chameleon-quic")
 			}
-			return tunnel.DialQUICDatagramSession(ctx, *chameleonQUIC, tunnelPSK, *timeout, tlsCfg)
+			return tunnel.DialQUICDatagramSessionAuth(ctx, *chameleonQUIC, auth, *timeout, tlsCfg)
 		case "auto":
 			if *chameleonQUIC != "" {
-				return tunnel.DialQUICDatagramSession(ctx, *chameleonQUIC, tunnelPSK, *timeout, tlsCfg)
+				return tunnel.DialQUICDatagramSessionAuth(ctx, *chameleonQUIC, auth, *timeout, tlsCfg)
 			}
 			return socks5.NewDirectUDPAssociation(ctx, *timeout), nil
 		default:
@@ -173,6 +180,15 @@ func main() {
 	if err != nil && ctx.Err() == nil {
 		panic(err)
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func defaultStateDir() string {

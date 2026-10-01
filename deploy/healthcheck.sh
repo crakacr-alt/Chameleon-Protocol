@@ -21,12 +21,23 @@ healthy() {
     ss -H -lun "sport = :$port" 2>/dev/null | grep -q .
 }
 
-if healthy; then
+wait_healthy() {
+  local attempt
+  for attempt in $(seq 1 10); do
+    if healthy; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
+if wait_healthy; then
   exit 0
 fi
 
-echo "Chameleon TLS/QUIC health check failed; restarting service" >&2
+echo "Chameleon TLS/QUIC health check failed after startup grace period; restarting service" >&2
 systemctl restart chameleon-tunnel.service
-sleep 2
 
-healthy
+# Avoid restart loops while systemd is still binding TCP/UDP listeners.
+wait_healthy

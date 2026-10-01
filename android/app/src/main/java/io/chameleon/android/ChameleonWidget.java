@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.os.Build;
 import android.widget.RemoteViews;
 
-import mobile.Mobile;
 
 /** One-tap home-screen widget for Chameleon Smart mode. */
 public final class ChameleonWidget extends AppWidgetProvider {
@@ -25,38 +24,28 @@ public final class ChameleonWidget extends AppWidgetProvider {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (ACTION_TOGGLE.equals(intent.getAction())) {
-            if (!AppFiles.hasConfig(context)) {
-                Intent open = new Intent(context, MainActivity.class);
-                open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(open);
-            } else if (ChameleonVpnService.running()) {
-                ChameleonVpnService.requestStop(context);
-            } else {
-                Intent toggle = new Intent(context, ChameleonService.class);
-                toggle.setAction(ChameleonService.ACTION_SMART_TOGGLE);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !Mobile.running()) {
-                    context.startForegroundService(toggle);
-                } else {
-                    context.startService(toggle);
-                }
-            }
+            Intent toggle = new Intent(context, SmartToggleActivity.class);
+            toggle.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(toggle);
             updateAll(context);
         }
         super.onReceive(context, intent);
     }
 
     private static RemoteViews views(Context context) {
-        boolean vpn = ChameleonVpnService.running();
-        boolean running = Mobile.running() || vpn;
+        boolean running = ChameleonVpnService.running() || ChameleonVpnService.starting();
+        String mode = AppFiles.runtimeMode(context);
+        String activeLabel = "inspector".equals(mode)
+                ? "INSPECTOR ON"
+                : ("vpn".equals(mode) ? "VPN ON" : "SMART ON");
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_chameleon);
         views.setTextViewText(
                 R.id.widget_state,
-                vpn ? "VPN ON" : (running ? "SMART ON" : "SMART OFF")
+                running ? activeLabel : "SMART OFF"
         );
 
-        Intent toggle = new Intent(context, ChameleonWidget.class);
-        toggle.setAction(ACTION_TOGGLE);
-        PendingIntent pending = PendingIntent.getBroadcast(
+        Intent toggle = new Intent(context, SmartToggleActivity.class);
+        PendingIntent pending = PendingIntent.getActivity(
                 context, 4, toggle,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );

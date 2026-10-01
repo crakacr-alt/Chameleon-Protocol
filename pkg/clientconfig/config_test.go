@@ -65,6 +65,42 @@ CHAMELEON_TUNNEL_PSK=0123456789abcdef
 	}
 }
 
+func TestImportAuthV2ProfileWithoutLegacyPSK(t *testing.T) {
+	cfg, err := ImportProfile(strings.NewReader(`
+CHAMELEON_SERVER=relay.example:443
+CHAMELEON_TLS_SERVER=relay.example:443
+CHAMELEON_CLIENT_ID=android-client-0001
+CHAMELEON_CLIENT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+CHAMELEON_TLS_FINGERPRINT=aabbcc
+CHAMELEON_TCP_TRANSPORT=tls
+CHAMELEON_UDP_MODE=auto
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ClientID != "android-client-0001" {
+		t.Fatalf("client id not imported: %q", cfg.ClientID)
+	}
+	if len(cfg.ClientSecret) != 64 {
+		t.Fatalf("client secret not imported: length=%d", len(cfg.ClientSecret))
+	}
+	if cfg.PSK != "" {
+		t.Fatal("Auth v2 profile unexpectedly requires legacy PSK")
+	}
+	if cfg.SchemaVersion != SchemaVersion {
+		t.Fatalf("profile schema not migrated: %d", cfg.SchemaVersion)
+	}
+}
+
+func TestAuthV2RequiresIDAndSecretTogether(t *testing.T) {
+	cfg := Default()
+	cfg.TLSServer = "relay.example:443"
+	cfg.ClientID = "android-client-0001"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("client_id without client_secret must be rejected")
+	}
+}
+
 func TestSaveLoadPermissionsAndDurations(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg := Default()

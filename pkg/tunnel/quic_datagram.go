@@ -35,8 +35,9 @@ var ErrDatagramTooLarge = errors.New("UDP datagram is too large for Chameleon QU
 // the existing PSK-derived AEAD key for destination + payload frames so the
 // datagram mode follows the same authentication model as stream tunnels.
 type QUICDatagramSession struct {
-	conn   *quic.Conn
-	cipher *chcrypto.Cipher
+	conn    *quic.Conn
+	control net.Conn
+	cipher  *chcrypto.Cipher
 
 	sendMu sync.Mutex
 }
@@ -49,11 +50,21 @@ func DialQUICDatagramSession(
 	timeout time.Duration,
 	tlsCfg TLSClientConfig,
 ) (*QUICDatagramSession, error) {
+	return DialQUICDatagramSessionAuth(ctx, serverAddress, ClientAuth{PSK: psk}, timeout, tlsCfg)
+}
+
+func DialQUICDatagramSessionAuth(
+	ctx context.Context,
+	serverAddress string,
+	auth ClientAuth,
+	timeout time.Duration,
+	tlsCfg TLSClientConfig,
+) (*QUICDatagramSession, error) {
 	if stringsTrim(serverAddress) == "" {
 		return nil, fmt.Errorf("QUIC server address must not be empty")
 	}
-	if stringsTrim(psk) == "" {
-		return nil, fmt.Errorf("psk must not be empty")
+	if err := auth.Validate(); err != nil {
+		return nil, err
 	}
 	if timeout <= 0 {
 		timeout = 8 * time.Second
@@ -90,48 +101,17 @@ func DialQUICDatagramSession(
 	}
 
 	streamConn := &quicStreamConn{Stream: stream, conn: conn}
-	if err := streamConn.SetDeadline(time.Now().Add(timeout)); err != nil {
-		_ = streamConn.Close()
-		return nil, err
-	}
-
-	hello, nonce, err := buildClientHello(psk, datagramSessionDestination, time.Now())
+	secure, cipher, err := clientHandshakeAuthWithCipher(
+		streamConn, datagramSessionDestination, auth, timeout,
+	)
 	if err != nil {
 		_ = streamConn.Close()
-		return nil, err
-	}
-	if err := writeFull(streamConn, hello); err != nil {
-		_ = streamConn.Close()
-		return nil, fmt.Errorf("send datagram auth hello: %w", err)
+		return nil, fmt.Errorf("authenticate QUIC datagram session: %w", err)
 	}
 
-	cipher, err := deriveCipher(psk, nonce)
-	if err != nil {
-		_ = streamConn.Close()
-		return nil, err
-	}
-	secure := newSecureConn(streamConn, cipher)
-	status := make([]byte, 1024)
-	n, err := secure.Read(status)
-	if err != nil {
-		_ = streamConn.Close()
-		return nil, fmt.Errorf("read datagram auth status: %w", err)
-	}
-	if n == 0 || status[0] != 0 {
-		_ = streamConn.Close()
-		message := "datagram authentication rejected"
-		if n > 1 {
-			message = string(status[1:n])
-		}
-		return nil, fmt.Errorf("%s", message)
-	}
-	if err := streamConn.SetDeadline(time.Time{}); err != nil {
-		_ = streamConn.Close()
-		return nil, err
-	}
-
-	// The control stream stays open for the lifetime of the QUIC connection.
-	return &QUICDatagramSession{conn: conn, cipher: cipher}, nil
+	// Keep the authenticated control stream open for the lifetime of the
+	// datagram association. The same session cipher protects UDP frames.
+	return &QUICDatagramSession{conn: conn, control: secure, cipher: cipher}, nil
 }
 
 // Send forwards exactly one application UDP datagram.
@@ -253,19 +233,12 @@ func (s *Server) handleQUICDatagramConn(ctx context.Context, conn *quic.Conn) er
 		return err
 	}
 
-	hello, err := readClientHello(streamConn, s.cfg.PSK, time.Now(), s.cfg.MaxClockSkew)
+	hello, cipher, err := s.authenticateConn(streamConn)
 	if err != nil {
 		return err
 	}
 	if hello.Destination != datagramSessionDestination {
 		return fmt.Errorf("unexpected datagram session destination")
-	}
-	if !s.acceptNonce(hello.Nonce, time.Now()) {
-		return fmt.Errorf("replayed datagram tunnel hello")
-	}
-	cipher, err := deriveCipher(s.cfg.PSK, hello.Nonce)
-	if err != nil {
-		return err
 	}
 	secure := newSecureConn(streamConn, cipher)
 	if _, err := secure.Write([]byte{0}); err != nil {

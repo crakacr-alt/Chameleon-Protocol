@@ -81,12 +81,18 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 		ServerName:   cfg.TLSServerName,
 		PinnedSHA256: cfg.TLSFingerprint,
 	}
+	auth := tunnel.ClientAuth{
+		PSK:          cfg.PSK,
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+	}
 
 	adaptive := &adaptiveproxy.AdaptiveDialer{
 		Planner:                  p,
 		Carriers:                 candidates,
 		DPIStrategies:            dpi.DefaultStrategies(),
 		PSK:                      cfg.PSK,
+		Auth:                     auth,
 		TLSConfig:                tlsCfg,
 		Timeout:                  8 * time.Second,
 		DirectCooldown:           cfg.DirectCooldown.Duration(),
@@ -121,7 +127,7 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 			if cfg.QUICServer == "" {
 				return nil, fmt.Errorf("QUIC UDP requested but quic_server is empty")
 			}
-			return tunnel.DialQUICDatagramSession(ctx, cfg.QUICServer, cfg.PSK, 5*time.Second, tlsCfg)
+			return tunnel.DialQUICDatagramSessionAuth(ctx, cfg.QUICServer, auth, 5*time.Second, tlsCfg)
 
 		case "auto":
 			if cfg.QUICServer != "" {
@@ -130,8 +136,8 @@ func (r *Runtime) Serve(ctx context.Context, listener net.Listener) error {
 				udpMu.Unlock()
 
 				if !blocked {
-					association, err := tunnel.DialQUICDatagramSession(
-						ctx, cfg.QUICServer, cfg.PSK, 3*time.Second, tlsCfg,
+					association, err := tunnel.DialQUICDatagramSessionAuth(
+						ctx, cfg.QUICServer, auth, 3*time.Second, tlsCfg,
 					)
 					if err == nil {
 						udpMu.Lock()
@@ -241,6 +247,7 @@ func adaptiveStateScope(cfg clientconfig.Config) string {
 		strings.TrimSpace(cfg.TLSFingerprint),
 		strings.TrimSpace(cfg.TLSServerName),
 		strings.TrimSpace(cfg.TCPTransport),
+		strings.TrimSpace(cfg.ClientID),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(identity))
 	return hex.EncodeToString(sum[:8])

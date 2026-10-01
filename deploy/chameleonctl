@@ -3,6 +3,9 @@ set -euo pipefail
 
 ENV_FILE="/etc/chameleon/tunnel.env"
 CLIENT_FILE="/etc/chameleon/client-profile.txt"
+CLIENT_V2_FILE="/etc/chameleon/client-profile-v2.txt"
+CLIENTS_FILE="/etc/chameleon/clients.json"
+CLIENT_TOOL="/usr/local/lib/chameleon/manage-clients.py"
 
 usage() {
   cat <<'EOF'
@@ -11,9 +14,15 @@ Usage: chameleonctl <command>
 Commands:
   status   Show service and timer state
   logs     Follow tunnel logs
-  client   Print root-only client connection profile
-  health   Run the local TLS health check now
-  restart  Restart tunnel service
+  client            Print legacy root-only PSK profile
+  client-v2         Print recommended Auth v2 profile
+  clients           List Auth v2 clients (secrets hidden)
+  client-add [name] Create Auth v2 client + profile
+  client-enable ID  Enable Auth v2 client
+  client-disable ID Disable Auth v2 client
+  client-delete ID  Delete Auth v2 client
+  health            Run the local TLS health check now
+  restart           Restart tunnel service
 EOF
 }
 
@@ -32,6 +41,41 @@ case "${1:-}" in
       exit 1
     }
     cat "$CLIENT_FILE"
+    ;;
+  client-v2)
+    [ "$(id -u)" -eq 0 ] || {
+      echo "Auth v2 profile contains a client secret; run with sudo" >&2
+      exit 1
+    }
+    cat "$CLIENT_V2_FILE"
+    ;;
+  clients)
+    [ "$(id -u)" -eq 0 ] || { echo "clients requires root" >&2; exit 1; }
+    "$CLIENT_TOOL" --file "$CLIENTS_FILE" list
+    ;;
+  client-add)
+    [ "$(id -u)" -eq 0 ] || { echo "client-add requires root" >&2; exit 1; }
+    name="${2:-Android client}"
+    credentials="$("$CLIENT_TOOL" --file "$CLIENTS_FILE" add "$name")"
+    client_id="$(printf '%s\n' "$credentials" | sed -n 's/^CHAMELEON_CLIENT_ID=//p')"
+    client_secret="$(printf '%s\n' "$credentials" | sed -n 's/^CHAMELEON_CLIENT_SECRET=//p')"
+    [ -n "$client_id" ] && [ -n "$client_secret" ] || {
+      echo "failed to create client credentials" >&2
+      exit 1
+    }
+    profile="/etc/chameleon/client-profile-${client_id}.txt"
+    sed       -e "s/^CHAMELEON_CLIENT_ID=.*/CHAMELEON_CLIENT_ID=$client_id/"       -e "s/^CHAMELEON_CLIENT_SECRET=.*/CHAMELEON_CLIENT_SECRET=$client_secret/"       "$CLIENT_V2_FILE" > "$profile"
+    chmod 0600 "$profile"
+    systemctl restart chameleon-tunnel.service
+    printf '%s\n' "$credentials"
+    printf 'PROFILE=%s\n' "$profile"
+    ;;
+  client-enable|client-disable|client-delete)
+    [ "$(id -u)" -eq 0 ] || { echo "$1 requires root" >&2; exit 1; }
+    [ -n "${2:-}" ] || { echo "usage: chameleonctl $1 CLIENT_ID" >&2; exit 2; }
+    action="${1#client-}"
+    "$CLIENT_TOOL" --file "$CLIENTS_FILE" "$action" "$2"
+    systemctl restart chameleon-tunnel.service
     ;;
   health)
     exec /usr/local/lib/chameleon/healthcheck.sh

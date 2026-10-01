@@ -39,6 +39,10 @@ func ImportProfile(r io.Reader) (Config, error) {
 			explicitTCP = true
 		case "CHAMELEON_TUNNEL_PSK":
 			cfg.PSK = value
+		case "CHAMELEON_CLIENT_ID":
+			cfg.ClientID = value
+		case "CHAMELEON_CLIENT_SECRET":
+			cfg.ClientSecret = value
 		case "CHAMELEON_TLS_FINGERPRINT":
 			cfg.TLSFingerprint = value
 		case "CHAMELEON_TLS_SERVER_NAME":

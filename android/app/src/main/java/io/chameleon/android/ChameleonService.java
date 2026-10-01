@@ -37,18 +37,20 @@ public final class ChameleonService extends Service {
             return START_NOT_STICKY;
         }
 
-        if (ACTION_SMART_TOGGLE.equals(action) && runtimeRunning()) {
-            stopRuntime();
+        if (ACTION_SMART_TOGGLE.equals(action)) {
+            if (runtimeRunning()) {
+                stopRuntime();
+            }
+            Intent smart = new Intent(this, SmartToggleActivity.class);
+            smart.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(smart);
+            stopSelf();
             return START_NOT_STICKY;
         }
 
         startForeground(NOTIFICATION_ID, notification("Подключение…"));
 
         try {
-            if (ACTION_SMART_TOGGLE.equals(action)) {
-                AppFiles.forceSmart(this);
-            }
-
             String error = Mobile.startOwned(AppFiles.readConfig(this), RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
                 Log.e(TAG, "runtime start failed: " + error);
