@@ -1,7 +1,21 @@
 {
   "schema": 1,
-  "latest": "1.0.11-alpha",
+  "latest": "1.0.12-alpha",
   "releases": [
+    {
+      "version": "1.0.12-alpha",
+      "protocol": "1.0.x-compatible",
+      "date": "2026-10-01",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.12-alpha/Chameleon-Android-1.0.12-alpha.apk",
+      "sha256": "",
+      "changes": [
+        "Обычный TLS handshake теперь проверяется первым; split ClientHello используется только как fallback.",
+        "Исправлена вводящая в заблуждение строка о совместимости системного VPN.",
+        "Сохранены authenticated preflight и TLS-only relay profile из 1.0.11-alpha."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.0.11-alpha",
       "protocol": "1.0.x-compatible",
