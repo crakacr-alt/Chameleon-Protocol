@@ -2,6 +2,28 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.11-alpha] - 2026-10-01
+
+### Fixed
+
+- Явные TLS-only профили больше не получают автоматически выдуманные raw TCP/QUIC endpoints.
+- После неуспешного mobile QUIC preflight недоступный QUIC endpoint удаляется из подготовленного VPN config, поэтому DNS не повторяет лишний UDP timeout.
+- Ошибка запуска Android VPN сохраняется и остаётся видимой после остановки foreground service.
+
+### Changed
+
+- После импорта Android сразу выполняет authenticated preflight: проверяет TLS pin + Chameleon PSK и сохраняет реально рабочий endpoint/transport.
+- На Android 10+ первый запуск по умолчанию выбирает системный VPN для всего устройства.
+- Server/relay profile generators больше не рекламируют raw TCP на TLS listener.
+- Legacy profile только с `CHAMELEON_SERVER` остаётся обратно совместимым.
+
+### Verified
+
+- Реальный путь `80.86.216.169:443 -> HAProxy -> WireGuard -> 88.210.20.127:9443` прошёл authenticated SOCKS test.
+- Тестовый выход через relay вернул публичный exit IP `88.210.20.127`.
+- Полный `go test ./...` прошёл на Go 1.27.1.
+- Deployment shell scripts прошли `bash -n`.
+
 ## [Android 1.0.10-alpha] - 2026-10-01
 
 ### Fixed
