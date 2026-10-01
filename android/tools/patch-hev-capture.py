@@ -198,7 +198,7 @@ edit("src/hev-socks5-tunnel.c",
 
 edit("src/hev-socks5-tunnel.c",
 '''int
-hev_socks5_tunnel_init (int extern_tun_fd)
+hev_socks5_tunnel_init (int tun_fd)
 {''',
 '''int
 hev_socks5_tunnel_init (int extern_tun_fd)
@@ -214,7 +214,7 @@ if marker not in text:
     raise SystemExit("hev_socks5_tunnel_init marker missing")
 
 # Locate init body and add pcap_open after tunnel_init succeeds.
-old = '''    res = tunnel_init (extern_tun_fd);
+old = '''    res = tunnel_init (tun_fd);
     if (res < 0)
         goto exit;'''
 new = '''    res = tunnel_init (extern_tun_fd);
