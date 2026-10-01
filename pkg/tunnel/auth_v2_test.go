@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -78,7 +79,7 @@ func TestAuthV2EndToEnd(t *testing.T) {
 
 	select {
 	case err := <-serverDone:
-		if err != nil && !isClosedError(err) {
+		if err != nil && !isClosedError(err) && !errors.Is(err, io.ErrClosedPipe) {
 			t.Fatal(err)
 		}
 	case <-time.After(2 * time.Second):
