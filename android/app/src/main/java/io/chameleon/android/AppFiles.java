@@ -19,6 +19,7 @@ final class AppFiles {
     private static final String CONFIG_FILE = "client.json";
     private static final String PREFS = "chameleon_ui";
     private static final String KEY_RUNTIME_MODE = "runtime_mode";
+    private static final String KEY_LAST_VPN_ERROR = "last_vpn_error";
 
     private AppFiles() {}
 
@@ -74,6 +75,20 @@ final class AppFiles {
     static void setRuntimeMode(Context context, String mode) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY_RUNTIME_MODE, mode).apply();
+    }
+
+    static String lastVpnError(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_LAST_VPN_ERROR, "");
+    }
+
+    static void setLastVpnError(Context context, String message) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY_LAST_VPN_ERROR, message == null ? "" : message).apply();
+    }
+
+    static void clearLastVpnError(Context context) {
+        setLastVpnError(context, "");
     }
 
     static void forceSmart(Context context) throws Exception {
