@@ -453,6 +453,10 @@ public final class MainActivity extends Activity {
     }
 
     private boolean hasExternalVpnTransport() {
+        if (ChameleonVpnService.running() || ChameleonVpnService.starting()) {
+            return false;
+        }
+
         ConnectivityManager manager =
                 (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         if (manager == null) return false;
