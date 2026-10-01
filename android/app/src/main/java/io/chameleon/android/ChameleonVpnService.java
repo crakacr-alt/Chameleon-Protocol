@@ -95,7 +95,31 @@ public final class ChameleonVpnService extends VpnService {
             AppFiles.setRuntimeMode(this, runtimeMode);
             AppFiles.setCoreMode(this, smartMode ? "smart" : "proxy");
 
-            notifyState("Проверка доступного транспорта…");
+            // Take ownership of Android's VPN slot before remote preflight.
+            // This replaces any previously active V2Ray/Happ-style VPN. Our own
+            // package is excluded from the TUN, so Go sockets used by preflight
+            // go through the real Wi-Fi/cellular underlay instead of the old VPN.
+            notifyState("Подготавливаю прямой канал к ingress…");
+            ParcelFileDescriptor established = new Builder()
+                    .setSession("Chameleon VPN")
+                    .setMtu(1400)
+                    .addAddress("198.18.0.1", 32)
+                    .addRoute("0.0.0.0", 0)
+                    .addAddress("fd00:1:fd00:1::1", 128)
+                    .addRoute("::", 0)
+                    .addDnsServer("1.1.1.1")
+                    .addDnsServer("8.8.8.8")
+                    .addDisallowedApplication(getPackageName())
+                    .setBlocking(true)
+                    .establish();
+
+            if (established == null) {
+                Log.e(TAG, "VpnService.Builder.establish returned null");
+                throw new IllegalStateException("Android не создал VPN-интерфейс");
+            }
+            synchronized (lock) { tun = established; }
+
+            notifyState("Проверяю ingress и авторизацию напрямую…");
             String originalConfig = AppFiles.readConfig(this);
             String vpnConfig = Mobile.prepareVPNConfig(originalConfig);
             if (vpnConfig.startsWith("ERROR:")) {
@@ -136,26 +160,6 @@ public final class ChameleonVpnService extends VpnService {
                 throw new IllegalStateException("SOCKS5 127.0.0.1:1080 не запустился");
             }
             Log.i(TAG, "SOCKS listener ready");
-
-            ParcelFileDescriptor established = new Builder()
-                    .setSession("Chameleon VPN")
-                    .setMtu(1400)
-                    .addAddress("198.18.0.1", 32)
-                    .addRoute("0.0.0.0", 0)
-                    .addAddress("fd00:1:fd00:1::1", 128)
-                    .addRoute("::", 0)
-                    .addDnsServer("1.1.1.1")
-                    .addDnsServer("8.8.8.8")
-                    .addDisallowedApplication(getPackageName())
-                    .setBlocking(true)
-                    .establish();
-
-            if (established == null) {
-                Log.e(TAG, "VpnService.Builder.establish returned null");
-                throw new IllegalStateException("Android не создал VPN-интерфейс");
-            }
-
-            synchronized (lock) { tun = established; }
             writeTunConfig(inspectorMode);
 
             if (!TProxyService.TProxyStartService(
