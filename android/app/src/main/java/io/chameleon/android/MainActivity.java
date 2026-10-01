@@ -8,6 +8,9 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
@@ -400,9 +403,14 @@ public final class MainActivity extends Activity {
             AppFiles.writeConfig(this, config);
             AppFiles.setRuntimeMode(this, mode);
             AppFiles.clearLastVpnError(this);
-            Toast.makeText(this, "Профиль сохранён. Проверяю сервер и авторизацию…", Toast.LENGTH_LONG).show();
             refreshState();
-            verifyImportedProfile(config, mode);
+
+            new AlertDialog.Builder(this)
+                    .setTitle("Профиль готов")
+                    .setMessage("Профиль сохранён. Проверка ingress и Auth v2 будет выполнена после запуска Chameleon через прямой Wi-Fi/мобильный канал, чтобы активный Happ/V2Ray/другой VPN не влиял на результат.")
+                    .setPositiveButton("Подключить", (dialog, which) -> toggleConnection())
+                    .setNegativeButton("Позже", null)
+                    .show();
         } catch (Exception error) {
             new AlertDialog.Builder(this)
                     .setTitle("Ошибка профиля")
@@ -410,66 +418,6 @@ public final class MainActivity extends Activity {
                     .setPositiveButton("OK", null)
                     .show();
         }
-    }
-
-    private void verifyImportedProfile(String config, String mode) {
-        new Thread(() -> {
-            try {
-                String prepared = Mobile.prepareVPNConfig(config);
-                if (prepared.startsWith("ERROR:")) {
-                    String message = prepared.substring("ERROR:".length()).trim();
-                    AppFiles.setLastVpnError(this, message);
-                    runOnUiThread(() -> {
-                        refreshState();
-                        new AlertDialog.Builder(this)
-                                .setTitle("Профиль сохранён, но сервер не подтвердил подключение")
-                                .setMessage(message)
-                                .setPositiveButton("OK", null)
-                                .show();
-                    });
-                    return;
-                }
-
-                JSONObject selected = new JSONObject(prepared);
-                String transport = selected.optString("tcp_transport", "auto");
-                String endpoint;
-                if ("tls".equalsIgnoreCase(transport)) {
-                    endpoint = selected.optString("tls_server", "—");
-                } else if ("quic".equalsIgnoreCase(transport)) {
-                    endpoint = selected.optString("quic_server", "—");
-                } else {
-                    endpoint = selected.optString("tcp_server", "—");
-                }
-                String udp = "quic".equalsIgnoreCase(selected.optString("udp_mode", "auto"))
-                        ? "QUIC"
-                        : "DNS-over-TCP";
-
-                AppFiles.writeConfig(this, prepared);
-                AppFiles.setRuntimeMode(this, mode);
-                AppFiles.clearLastVpnError(this);
-
-                String success = "Авторизация OK • " + transport.toUpperCase()
-                        + " " + endpoint + " • UDP " + udp;
-                runOnUiThread(() -> {
-                    refreshState();
-                    new AlertDialog.Builder(this)
-                            .setTitle("Профиль готов")
-                            .setMessage(success)
-                            .setPositiveButton("Подключить", (dialog, which) -> toggleConnection())
-                            .setNegativeButton("Позже", null)
-                            .show();
-                });
-            } catch (Exception error) {
-                String message = error.getMessage() == null
-                        ? error.getClass().getSimpleName()
-                        : error.getMessage();
-                AppFiles.setLastVpnError(this, message);
-                runOnUiThread(() -> {
-                    refreshState();
-                    Toast.makeText(this, "Ошибка проверки профиля: " + message, Toast.LENGTH_LONG).show();
-                });
-            }
-        }, "chameleon-profile-verify").start();
     }
 
     private void refreshState() {
@@ -502,6 +450,20 @@ public final class MainActivity extends Activity {
         } else {
             detailText.setText("Готов к подключению");
         }
+    }
+
+    private boolean hasExternalVpnTransport() {
+        ConnectivityManager manager =
+                (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        if (manager == null) return false;
+
+        for (Network network : manager.getAllNetworks()) {
+            NetworkCapabilities caps = manager.getNetworkCapabilities(network);
+            if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void showDiagnostics() {
@@ -538,8 +500,13 @@ public final class MainActivity extends Activity {
                 String lastError = Mobile.lastError();
                 if (lastError.isEmpty()) lastError = AppFiles.lastVpnError(this);
 
+                boolean otherVpn = hasExternalVpnTransport();
                 String remoteStatus;
-                if (error.isEmpty()) {
+                if (error.isEmpty() && otherVpn
+                        && !ChameleonVpnService.running()
+                        && !ChameleonVpnService.starting()) {
+                    remoteStatus = "ОТЛОЖЕНО • активен другой VPN; ingress будет проверен напрямую после запуска Chameleon";
+                } else if (error.isEmpty()) {
                     String prepared = Mobile.prepareVPNConfig(config);
                     if (prepared.startsWith("ERROR:")) {
                         remoteStatus = "FAIL • " + prepared.substring("ERROR:".length()).trim();
@@ -568,7 +535,8 @@ public final class MainActivity extends Activity {
                         + "\nSOCKS5: 127.0.0.1:1080"
                         + "\nListener: " + listener
                         + "\nOwner: " + (Mobile.owner().isEmpty() ? "—" : Mobile.owner())
-                        + "\nSystem VPN: " + vpnState
+                        + "\nChameleon VPN: " + vpnState
+                        + "\nДругой VPN: " + (otherVpn ? "active" : "не обнаружен")
                         + (lastError.isEmpty() ? "" : "\nLast error: " + lastError)
                         : "Ошибка: " + error;
 
