@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Mode string
 
@@ -26,7 +26,9 @@ type Config struct {
 	QUICServer     string   `json:"quic_server,omitempty"`
 	TLSServer      string   `json:"tls_server,omitempty"`
 	TCPServer      string   `json:"tcp_server,omitempty"`
-	PSK            string   `json:"psk"`
+	PSK            string   `json:"psk,omitempty"`
+	ClientID       string   `json:"client_id,omitempty"`
+	ClientSecret   string   `json:"client_secret,omitempty"`
 	TLSFingerprint string   `json:"tls_fingerprint,omitempty"`
 	TLSServerName  string   `json:"tls_server_name,omitempty"`
 	UDPMode        string   `json:"udp_mode"`
@@ -113,6 +115,9 @@ func (c *Config) Migrate() error {
 	if c.SchemaVersion == 0 {
 		c.SchemaVersion = 1
 	}
+	if c.SchemaVersion == 1 {
+		c.SchemaVersion = 2
+	}
 	if c.SchemaVersion > SchemaVersion {
 		return fmt.Errorf("config schema %d is newer than supported schema %d", c.SchemaVersion, SchemaVersion)
 	}
@@ -162,8 +167,22 @@ func (c Config) Validate() error {
 	if c.Mode == ModeProxy && c.QUICServer == "" && c.TLSServer == "" && c.TCPServer == "" {
 		return fmt.Errorf("proxy mode requires at least one Chameleon server endpoint")
 	}
-	if (c.QUICServer != "" || c.TLSServer != "" || c.TCPServer != "") && strings.TrimSpace(c.PSK) == "" {
-		return fmt.Errorf("psk is required when tunnel endpoints are configured")
+	if c.QUICServer != "" || c.TLSServer != "" || c.TCPServer != "" {
+		hasID := strings.TrimSpace(c.ClientID) != ""
+		hasSecret := strings.TrimSpace(c.ClientSecret) != ""
+		if hasID != hasSecret {
+			return fmt.Errorf("client_id and client_secret must be configured together")
+		}
+		if hasID {
+			if len(strings.TrimSpace(c.ClientID)) < 8 || len(strings.TrimSpace(c.ClientID)) > 128 {
+				return fmt.Errorf("client_id must contain 8-128 characters")
+			}
+			if len(strings.TrimSpace(c.ClientSecret)) < 24 || len(strings.TrimSpace(c.ClientSecret)) > 256 {
+				return fmt.Errorf("client_secret must contain 24-256 characters")
+			}
+		} else if strings.TrimSpace(c.PSK) == "" {
+			return fmt.Errorf("client credentials or legacy psk are required when tunnel endpoints are configured")
+		}
 	}
 	if c.DirectCooldown.Duration() < 0 || c.FailureWindow.Duration() < 0 {
 		return fmt.Errorf("durations must not be negative")
