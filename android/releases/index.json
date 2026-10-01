@@ -1,7 +1,22 @@
 {
   "schema": 1,
-  "latest": "1.1.0-alpha",
+  "latest": "1.1.1-alpha",
   "releases": [
+    {
+      "version": "1.1.1-alpha",
+      "protocol": "1.1-auth-v2",
+      "date": "2026-10-02",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.1.1-alpha/Chameleon-Android-1.1.1-alpha.apk",
+      "sha256": "",
+      "changes": [
+        "Исправлен first-hop при активном Happ/V2Ray/другом VPN: Chameleon сначала занимает VPN-слот и только потом проверяет ingress.",
+        "Собственные сокеты Chameleon исключаются из TUN до preflight и идут через реальный Wi-Fi/мобильный underlay.",
+        "Импорт профиля больше не выдаёт ложную ошибку сервера из-за стороннего VPN.",
+        "Doctor различает Chameleon VPN и сторонний VPN и откладывает remote probe до подключения."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.1.0-alpha",
       "protocol": "1.1-auth-v2",
