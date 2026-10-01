@@ -384,7 +384,7 @@ public final class MainActivity extends Activity {
 
             String profile = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
             String mode = selectedMode();
-            String coreMode = "vpn".equals(mode) ? "proxy" : mode;
+            String coreMode = "smart".equals(mode) ? "smart" : "proxy";
             String stateDir = new java.io.File(getFilesDir(), "state").getAbsolutePath();
             String config = Mobile.buildConfig(profile, stateDir, coreMode);
             if (config.startsWith("ERROR:")) {
