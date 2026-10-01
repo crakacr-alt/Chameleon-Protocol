@@ -27,28 +27,33 @@ const (
 // wall-clock timestamps. A fresh server challenge makes recorded proofs
 // unusable on a later connection.
 func clientHandshakeV2(conn net.Conn, destination string, auth ClientAuth, timeout time.Duration) (*SecureConn, error) {
+	secure, _, err := clientHandshakeV2WithCipher(conn, destination, auth, timeout)
+	return secure, err
+}
+
+func clientHandshakeV2WithCipher(conn net.Conn, destination string, auth ClientAuth, timeout time.Duration) (*SecureConn, *chcrypto.Cipher, error) {
 	if conn == nil {
-		return nil, fmt.Errorf("connection is nil")
+		return nil, nil, fmt.Errorf("connection is nil")
 	}
 	if err := auth.Validate(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !auth.UsesV2() {
-		return nil, fmt.Errorf("Auth v2 credentials are required")
+		return nil, nil, fmt.Errorf("Auth v2 credentials are required")
 	}
 	if err := validateDestination(destination); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
 	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var clientNonce [nonceSize]byte
 	if _, err := rand.Read(clientNonce[:]); err != nil {
-		return nil, fmt.Errorf("generate client nonce: %w", err)
+		return nil, nil, fmt.Errorf("generate client nonce: %w", err)
 	}
 	id := []byte(strings.TrimSpace(auth.ClientID))
 	start := make([]byte, len(authV2Magic)+2+len(id)+nonceSize)
@@ -57,17 +62,17 @@ func clientHandshakeV2(conn net.Conn, destination string, auth ClientAuth, timeo
 	copy(start[len(authV2Magic)+2:], id)
 	copy(start[len(authV2Magic)+2+len(id):], clientNonce[:])
 	if err := writeFull(conn, start); err != nil {
-		return nil, fmt.Errorf("send Auth v2 hello: %w", err)
+		return nil, nil, fmt.Errorf("send Auth v2 hello: %w", err)
 	}
 
 	var serverNonce [nonceSize]byte
 	if _, err := io.ReadFull(conn, serverNonce[:]); err != nil {
-		return nil, fmt.Errorf("read Auth v2 challenge: %w", err)
+		return nil, nil, fmt.Errorf("read Auth v2 challenge: %w", err)
 	}
 
 	authCipher, err := deriveV2Cipher(auth.ClientSecret, clientNonce, serverNonce, "chameleon/auth/v2")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	dest := []byte(destination)
 	plain := make([]byte, 1+2+len(dest))
@@ -76,44 +81,44 @@ func clientHandshakeV2(conn net.Conn, destination string, auth ClientAuth, timeo
 	copy(plain[3:], dest)
 	encrypted, err := authCipher.Seal(plain)
 	if err != nil {
-		return nil, fmt.Errorf("encrypt Auth v2 proof: %w", err)
+		return nil, nil, fmt.Errorf("encrypt Auth v2 proof: %w", err)
 	}
 	if len(encrypted) > maxHelloCipher {
-		return nil, fmt.Errorf("Auth v2 proof is too large")
+		return nil, nil, fmt.Errorf("Auth v2 proof is too large")
 	}
 	var length [2]byte
 	binary.BigEndian.PutUint16(length[:], uint16(len(encrypted)))
 	if err := writeFull(conn, length[:]); err != nil {
-		return nil, fmt.Errorf("send Auth v2 proof length: %w", err)
+		return nil, nil, fmt.Errorf("send Auth v2 proof length: %w", err)
 	}
 	if err := writeFull(conn, encrypted); err != nil {
-		return nil, fmt.Errorf("send Auth v2 proof: %w", err)
+		return nil, nil, fmt.Errorf("send Auth v2 proof: %w", err)
 	}
 
 	sessionCipher, err := deriveV2Cipher(auth.ClientSecret, clientNonce, serverNonce, "chameleon/tunnel/v2/session")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	secure := newSecureConn(conn, sessionCipher)
 	status := make([]byte, 4096)
 	n, err := secure.Read(status)
 	if err != nil {
-		return nil, fmt.Errorf("read tunnel status: %w", err)
+		return nil, nil, fmt.Errorf("read tunnel status: %w", err)
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("empty tunnel status")
+		return nil, nil, fmt.Errorf("empty tunnel status")
 	}
 	if status[0] != 0 {
 		message := "remote dial failed"
 		if n > 1 {
 			message = string(status[1:n])
 		}
-		return nil, fmt.Errorf("%s", message)
+		return nil, nil, fmt.Errorf("%s", message)
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return secure, nil
+	return secure, sessionCipher, nil
 }
 
 func serverHandshakeV2(r io.Reader, w io.Writer, registry *ClientRegistry, now time.Time) (clientHello, *chcrypto.Cipher, error) {
