@@ -409,14 +409,19 @@ verify_service() {
     die "chameleon-tunnel did not start"
   }
 
-  if ! curl -kfsS --connect-timeout 4 --max-time 6     "https://127.0.0.1:$port/" >/dev/null; then
-    journalctl -u chameleon-tunnel.service -n 50 --no-pager || true
-    die "local TLS health check failed"
-  fi
+  local ready=0 attempt
+  for attempt in $(seq 1 12); do
+    if curl -kfsS --connect-timeout 2 --max-time 3 "https://127.0.0.1:$port/" >/dev/null 2>&1 &&
+       ss -H -lun "sport = :$port" 2>/dev/null | grep -q .; then
+      ready=1
+      break
+    fi
+    sleep 0.5
+  done
 
-  if ! ss -H -lun "sport = :$port" 2>/dev/null | grep -q .; then
+  if [ "$ready" -ne 1 ]; then
     journalctl -u chameleon-tunnel.service -n 50 --no-pager || true
-    die "QUIC UDP listener is not active on port $port"
+    die "local TLS/QUIC health check did not become ready within 6 seconds"
   fi
 }
 
