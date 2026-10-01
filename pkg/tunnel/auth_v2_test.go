@@ -139,10 +139,22 @@ func TestAuthV2DisabledAndExpiredClientsRejected(t *testing.T) {
 
 func TestServerKeepsLegacyPSKFallbackWithAuthV2Enabled(t *testing.T) {
 	clientSide, serverSide := net.Pipe()
+	upstreamServer, upstreamEcho := net.Pipe()
+
+	go func() {
+		_, _ = io.Copy(upstreamEcho, upstreamEcho)
+		_ = upstreamEcho.Close()
+	}()
+
 	server, err := NewServer(ServerConfig{
-		PSK:              "legacy-secret",
-		Clients:          testV2Registry(t),
-		HandshakeTimeout: time.Second,
+		PSK:                      "legacy-secret",
+		Clients:                  testV2Registry(t),
+		HandshakeTimeout:         time.Second,
+		DialTimeout:              time.Second,
+		AllowPrivateDestinations: true,
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return upstreamServer, nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,18 +165,30 @@ func TestServerKeepsLegacyPSKFallbackWithAuthV2Enabled(t *testing.T) {
 		serverDone <- server.HandleConn(context.Background(), serverSide)
 	}()
 
-	secure, err := clientHandshake(clientSide, probeSessionDestination, "legacy-secret", time.Second)
+	secure, err := clientHandshake(clientSide, "example.com:443", "legacy-secret", time.Second)
 	if err != nil {
 		t.Fatalf("legacy PSK fallback failed: %v", err)
+	}
+
+	payload := []byte("legacy-fallback-round-trip")
+	if _, err := secure.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, len(payload))
+	if _, err := io.ReadFull(secure, got); err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("unexpected payload %q", got)
 	}
 	_ = secure.Close()
 
 	select {
 	case err := <-serverDone:
-		if err != nil {
+		if err != nil && !isClosedError(err) && !errors.Is(err, io.ErrClosedPipe) {
 			t.Fatal(err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("legacy probe did not finish")
+		t.Fatal("legacy fallback server did not finish")
 	}
 }
