@@ -24,8 +24,17 @@ func ProbeTCPContext(
 	psk string,
 	timeout time.Duration,
 ) (ProbeResult, error) {
+	return ProbeTCPContextAuth(ctx, serverAddress, ClientAuth{PSK: psk}, timeout)
+}
+
+func ProbeTCPContextAuth(
+	ctx context.Context,
+	serverAddress string,
+	auth ClientAuth,
+	timeout time.Duration,
+) (ProbeResult, error) {
 	started := time.Now()
-	conn, err := DialContext(ctx, serverAddress, probeSessionDestination, psk, timeout)
+	conn, err := DialContextAuth(ctx, serverAddress, probeSessionDestination, auth, timeout)
 	if err != nil {
 		return ProbeResult{Transport: "tcp", Latency: time.Since(started)}, err
 	}
@@ -41,8 +50,18 @@ func ProbeTLSContext(
 	timeout time.Duration,
 	cfg TLSClientConfig,
 ) (ProbeResult, error) {
+	return ProbeTLSContextAuth(ctx, serverAddress, ClientAuth{PSK: psk}, timeout, cfg)
+}
+
+func ProbeTLSContextAuth(
+	ctx context.Context,
+	serverAddress string,
+	auth ClientAuth,
+	timeout time.Duration,
+	cfg TLSClientConfig,
+) (ProbeResult, error) {
 	started := time.Now()
-	conn, err := DialTLSContext(ctx, serverAddress, probeSessionDestination, psk, timeout, cfg)
+	conn, err := DialTLSContextAuth(ctx, serverAddress, probeSessionDestination, auth, timeout, cfg)
 	if err != nil {
 		return ProbeResult{Transport: "tls", Latency: time.Since(started)}, err
 	}
@@ -62,15 +81,26 @@ func ProbeTLSWithDialer(
 	cfg TLSClientConfig,
 	dial RawDialFunc,
 ) (ProbeResult, error) {
+	return ProbeTLSWithDialerAuth(ctx, serverAddress, ClientAuth{PSK: psk}, timeout, cfg, dial)
+}
+
+func ProbeTLSWithDialerAuth(
+	ctx context.Context,
+	serverAddress string,
+	auth ClientAuth,
+	timeout time.Duration,
+	cfg TLSClientConfig,
+	dial RawDialFunc,
+) (ProbeResult, error) {
 	if dial == nil {
 		return ProbeResult{}, fmt.Errorf("probe dialer is nil")
 	}
 	started := time.Now()
-	conn, err := DialTLSContextWithDialer(
+	conn, err := DialTLSContextWithDialerAuth(
 		ctx,
 		serverAddress,
 		probeSessionDestination,
-		psk,
+		auth,
 		timeout,
 		cfg,
 		dial,
@@ -90,12 +120,22 @@ func ProbeQUICContext(
 	timeout time.Duration,
 	cfg TLSClientConfig,
 ) (ProbeResult, error) {
+	return ProbeQUICContextAuth(ctx, serverAddress, ClientAuth{PSK: psk}, timeout, cfg)
+}
+
+func ProbeQUICContextAuth(
+	ctx context.Context,
+	serverAddress string,
+	auth ClientAuth,
+	timeout time.Duration,
+	cfg TLSClientConfig,
+) (ProbeResult, error) {
 	started := time.Now()
-	conn, err := DialQUICContext(
+	conn, err := DialQUICContextAuth(
 		ctx,
 		serverAddress,
 		probeSessionDestination,
-		psk,
+		auth,
 		timeout,
 		cfg,
 		QUICConfig{},
@@ -115,15 +155,25 @@ func ProbeTCPWithDialer(
 	timeout time.Duration,
 	dial RawDialFunc,
 ) (ProbeResult, error) {
+	return ProbeTCPWithDialerAuth(ctx, serverAddress, ClientAuth{PSK: psk}, timeout, dial)
+}
+
+func ProbeTCPWithDialerAuth(
+	ctx context.Context,
+	serverAddress string,
+	auth ClientAuth,
+	timeout time.Duration,
+	dial RawDialFunc,
+) (ProbeResult, error) {
 	if dial == nil {
 		return ProbeResult{}, fmt.Errorf("probe dialer is nil")
 	}
 	started := time.Now()
-	conn, err := DialContextWithDialer(
+	conn, err := DialContextWithDialerAuth(
 		ctx,
 		serverAddress,
 		probeSessionDestination,
-		psk,
+		auth,
 		timeout,
 		dial,
 	)
