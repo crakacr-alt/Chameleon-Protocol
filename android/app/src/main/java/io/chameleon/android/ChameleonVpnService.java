@@ -173,7 +173,9 @@ public final class ChameleonVpnService extends VpnService {
                 notifyState("VPN остановлен: TUN transport завершился");
             }
         } catch (PackageManager.NameNotFoundException error) {
-            notifyState("VPN ошибка: не удалось исключить Chameleon из собственного VPN");
+            String message = "Не удалось исключить Chameleon из собственного VPN";
+            AppFiles.setLastVpnError(this, message);
+            notifyState("VPN ошибка: " + message);
         } catch (Exception error) {
             String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
             AppFiles.setLastVpnError(this, message);
