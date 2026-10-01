@@ -9,16 +9,19 @@ import (
 	"github.com/crakacr-alt/Chameleon-Protocol/pkg/clientconfig"
 )
 
-func TestMobileProbeStrategiesPreferPacedSplit(t *testing.T) {
+func TestMobileProbeStrategiesPreferDirectTLS(t *testing.T) {
 	strategies := mobileProbeStrategies()
-	if len(strategies) != 2 {
-		t.Fatalf("expected paced and split probe strategies, got %d", len(strategies))
+	if len(strategies) != 3 {
+		t.Fatalf("expected direct, paced and split probe strategies, got %d", len(strategies))
 	}
-	if strategies[0].Name != "paced-split-mobile" || strategies[0].DelayBetweenFragments != 25*time.Millisecond {
-		t.Fatalf("unexpected paced strategy: %+v", strategies[0])
+	if strategies[0].Name != "direct" {
+		t.Fatalf("expected normal TLS first, got %q", strategies[0].Name)
 	}
-	if strategies[1].Name != "split-early" {
-		t.Fatalf("expected split-early fallback, got %q", strategies[1].Name)
+	if strategies[1].Name != "paced-split-mobile" || strategies[1].DelayBetweenFragments != 25*time.Millisecond {
+		t.Fatalf("unexpected paced fallback: %+v", strategies[1])
+	}
+	if strategies[2].Name != "split-early" {
+		t.Fatalf("expected split-early final fallback, got %q", strategies[2].Name)
 	}
 }
 
