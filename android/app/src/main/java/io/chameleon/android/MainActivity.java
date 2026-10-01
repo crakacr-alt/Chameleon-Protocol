@@ -269,14 +269,14 @@ public final class MainActivity extends Activity {
         boolean smart = position == 0;
         String label;
         if (smart) {
-            label = "● Другой VPN совместим • только Smart";
+            label = "● Smart • можно использовать вместе с другим VPN";
         } else if (position == 2) {
-            label = "● Другой VPN несовместим • системный VPN";
+            label = "● Системный VPN • одновременно активен только один VPN";
         } else {
-            label = "● Другой VPN несовместим • Proxy mode";
+            label = "● Proxy • системный VPN-слот не используется";
         }
         coexistText.setText(label);
-        coexistText.setTextColor(color(smart ? R.color.success : R.color.danger));
+        coexistText.setTextColor(color(position == 2 ? R.color.textSecondary : R.color.success));
     }
 
     private void toggleConnection() {
