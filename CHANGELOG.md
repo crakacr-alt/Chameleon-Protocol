@@ -2,6 +2,17 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [Android 1.0.12-alpha] - 2026-10-01
+
+### Fixed
+
+- Android mobile preflight снова следует direct-first принципу: обычный TLS ClientHello проверяется до paced/split fallback.
+- Исправлена статическая подпись совместимости VPN, которая выглядела как обнаружение уже активного стороннего VPN.
+
+### Verified
+
+- Телефон доходит до ingress `80.86.216.169:443`, а HAProxy передаёт TCP-соединение на exit через WireGuard; ошибка 1.0.11 происходила до PSK auth именно на TLS handshake.
+
 ## [Android 1.0.11-alpha] - 2026-10-01
 
 ### Fixed
