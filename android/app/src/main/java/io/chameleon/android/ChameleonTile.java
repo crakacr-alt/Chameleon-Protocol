@@ -7,7 +7,6 @@ import android.os.Build;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 
-import mobile.Mobile;
 
 /** Quick Settings tile: one tap toggles Chameleon in Smart mode. */
 public final class ChameleonTile extends TileService {
@@ -28,29 +27,22 @@ public final class ChameleonTile extends TileService {
             return;
         }
 
-        if (ChameleonVpnService.running()) {
-            ChameleonVpnService.requestStop(this);
-            refresh();
-            return;
-        }
-
-        Intent toggle = new Intent(this, ChameleonService.class);
-        toggle.setAction(ChameleonService.ACTION_SMART_TOGGLE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !Mobile.running()) {
-            startForegroundService(toggle);
-        } else {
-            startService(toggle);
-        }
+        Intent toggle = new Intent(this, SmartToggleActivity.class);
+        toggle.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivityAndCollapse(toggle);
         refresh();
     }
 
     private void refresh() {
         Tile tile = getQsTile();
         if (tile == null) return;
-        boolean vpn = ChameleonVpnService.running();
-        boolean running = Mobile.running() || vpn;
+        boolean running = ChameleonVpnService.running() || ChameleonVpnService.starting();
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setLabel(vpn ? "Chameleon VPN" : "Chameleon Smart");
+        String mode = AppFiles.runtimeMode(this);
+        String label = "inspector".equals(mode)
+                ? "Chameleon Inspector"
+                : ("vpn".equals(mode) ? "Chameleon VPN" : "Chameleon Smart");
+        tile.setLabel(label);
         tile.updateTile();
     }
 
