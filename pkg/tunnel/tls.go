@@ -34,15 +34,26 @@ func DialTLSContext(
 	timeout time.Duration,
 	cfg TLSClientConfig,
 ) (net.Conn, error) {
+	return DialTLSContextAuth(ctx, serverAddress, destination, ClientAuth{PSK: psk}, timeout, cfg)
+}
+
+func DialTLSContextAuth(
+	ctx context.Context,
+	serverAddress string,
+	destination string,
+	auth ClientAuth,
+	timeout time.Duration,
+	cfg TLSClientConfig,
+) (net.Conn, error) {
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
 	dialer := &net.Dialer{Timeout: timeout}
-	return DialTLSContextWithDialer(
+	return DialTLSContextWithDialerAuth(
 		ctx,
 		serverAddress,
 		destination,
-		psk,
+		auth,
 		timeout,
 		cfg,
 		func(ctx context.Context, address string) (net.Conn, error) {
@@ -59,6 +70,18 @@ func DialTLSContextWithDialer(
 	serverAddress string,
 	destination string,
 	psk string,
+	timeout time.Duration,
+	cfg TLSClientConfig,
+	dial RawDialFunc,
+) (net.Conn, error) {
+	return DialTLSContextWithDialerAuth(ctx, serverAddress, destination, ClientAuth{PSK: psk}, timeout, cfg, dial)
+}
+
+func DialTLSContextWithDialerAuth(
+	ctx context.Context,
+	serverAddress string,
+	destination string,
+	auth ClientAuth,
 	timeout time.Duration,
 	cfg TLSClientConfig,
 	dial RawDialFunc,
@@ -98,7 +121,7 @@ func DialTLSContextWithDialer(
 		return nil, err
 	}
 
-	secure, err := clientHandshake(tlsConn, destination, psk, timeout)
+	secure, err := clientHandshakeAuth(tlsConn, destination, auth, timeout)
 	if err != nil {
 		_ = tlsConn.Close()
 		return nil, err
