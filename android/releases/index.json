@@ -8,7 +8,7 @@
       "date": "2026-10-02",
       "min_sdk": 23,
       "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.1.0-alpha/Chameleon-Android-1.1.0-alpha.apk",
-      "sha256": "",
+      "sha256": "226ca117a63982b860889209b5b81c9f5d8d55019083b335c5326a959ddcd117",
       "changes": [
         "Auth v2: отдельные client_id/client_secret, challenge-response без зависимости от часов и legacy PSK fallback.",
         "Smart стал полноценным системным VPN/TUN для трафика всего Android.",
