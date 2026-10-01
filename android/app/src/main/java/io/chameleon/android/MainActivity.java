@@ -209,6 +209,12 @@ public final class MainActivity extends Activity {
         doctorParams.topMargin = dp(8);
         root.addView(doctorButton, doctorParams);
 
+        Button inspectorButton = secondaryButton("Открыть Inspector / сниффер");
+        inspectorButton.setOnClickListener(v -> startActivity(new Intent(this, InspectorActivity.class)));
+        LinearLayout.LayoutParams inspectorParams = new LinearLayout.LayoutParams(-1, dp(48));
+        inspectorParams.topMargin = dp(8);
+        root.addView(inspectorButton, inspectorParams);
+
         TextView note = label(
                 "Inspector записывает трафик только после явного запуска и сохраняет захват локально на устройстве.",
                 12,
