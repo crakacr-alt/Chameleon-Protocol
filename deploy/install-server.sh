@@ -320,11 +320,12 @@ write_client_profile() {
   umask 077
   cat >"$CLIENT_FILE" <<EOF
 CHAMELEON_SERVER=$host:$port
-CHAMELEON_TCP_SERVER=$host:$port
 CHAMELEON_QUIC_SERVER=$host:$port
 CHAMELEON_TLS_SERVER=$host:$port
 CHAMELEON_TUNNEL_PSK=$psk
 CHAMELEON_TLS_FINGERPRINT=$fingerprint
+CHAMELEON_TCP_TRANSPORT=tls
+CHAMELEON_UDP_MODE=auto
 
 Linux local proxy example:
   export CHAMELEON_TUNNEL_PSK='$psk'
