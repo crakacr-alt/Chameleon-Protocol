@@ -233,6 +233,12 @@ public final class MainActivity extends Activity {
         String mode = (!AppFiles.hasConfig(this) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 ? "vpn"
                 : AppFiles.runtimeMode(this);
+        if ("proxy".equals(mode)) {
+            // 1.0.x called the local-only SOCKS mode "Proxy". In 1.1 it is
+            // replaced by the full-device Inspector, so migrate the UI choice.
+            mode = "inspector";
+            AppFiles.setRuntimeMode(this, mode);
+        }
         int position = "vpn".equals(mode) ? 2 : ("inspector".equals(mode) ? 1 : 0);
         modeSpinner.setSelection(position, false);
         modeEventsEnabled = true;
