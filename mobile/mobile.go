@@ -179,14 +179,14 @@ func PrepareVPNConfig(configJSON string) string {
 }
 
 func mobileProbeStrategies() []dpi.Strategy {
-	var paced, split dpi.Strategy
+	var direct, paced, split dpi.Strategy
 	for _, strategy := range dpi.DefaultStrategies() {
 		switch strategy.Name {
+		case "direct":
+			direct = strategy
 		case "paced-split":
-			// A few mobile middleboxes need a visible inter-fragment gap. Keep
-			// this limited to the one ClientHello probe; application traffic
-			// still uses the same paced first-flight behavior in adaptive
-			// runtime after the preflight has proved it works.
+			// Split ClientHello is a fallback only. Some mobile paths and TCP
+			// relays behave worse when the first TLS record is fragmented.
 			strategy.Name = "paced-split-mobile"
 			strategy.DelayBetweenFragments = 25 * time.Millisecond
 			paced = strategy
@@ -194,7 +194,10 @@ func mobileProbeStrategies() []dpi.Strategy {
 			split = strategy
 		}
 	}
-	strategies := make([]dpi.Strategy, 0, 2)
+	strategies := make([]dpi.Strategy, 0, 3)
+	if direct.Name != "" {
+		strategies = append(strategies, direct)
+	}
 	if paced.Name != "" {
 		strategies = append(strategies, paced)
 	}
