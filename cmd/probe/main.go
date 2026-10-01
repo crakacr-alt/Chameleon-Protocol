@@ -25,7 +25,9 @@ func main() {
 	showVersion := flag.Bool("version", false, "print Chameleon version and exit")
 	server := flag.String("server", "", "Chameleon server host:port")
 	transports := flag.String("transports", "quic,tls", "comma-separated: quic,tls,tcp")
-	psk := flag.String("psk", "", "tunnel PSK; CHAMELEON_TUNNEL_PSK is preferred for normal use")
+	psk := flag.String("psk", "", "legacy tunnel PSK")
+	clientID := flag.String("client-id", "", "Auth v2 client id; CHAMELEON_CLIENT_ID is preferred")
+	clientSecret := flag.String("client-secret", "", "Auth v2 client secret; CHAMELEON_CLIENT_SECRET is preferred")
 	tlsServerName := flag.String("tls-server-name", "", "TLS server name/SNI")
 	tlsFingerprint := flag.String("tls-fingerprint", "", "pinned server certificate SHA-256")
 	tlsInsecure := flag.Bool("tls-insecure", false, "skip normal certificate verification")
@@ -43,12 +45,13 @@ func main() {
 		exitErr(fmt.Errorf("--server is required"))
 	}
 
-	secret := *psk
-	if secret == "" {
-		secret = os.Getenv("CHAMELEON_TUNNEL_PSK")
+	auth := tunnel.ClientAuth{
+		PSK:          firstNonEmpty(*psk, os.Getenv("CHAMELEON_TUNNEL_PSK")),
+		ClientID:     firstNonEmpty(*clientID, os.Getenv("CHAMELEON_CLIENT_ID")),
+		ClientSecret: firstNonEmpty(*clientSecret, os.Getenv("CHAMELEON_CLIENT_SECRET")),
 	}
-	if secret == "" {
-		exitErr(fmt.Errorf("--psk or CHAMELEON_TUNNEL_PSK is required"))
+	if err := auth.Validate(); err != nil {
+		exitErr(err)
 	}
 
 	tlsCfg := tunnel.TLSClientConfig{
@@ -71,17 +74,17 @@ func main() {
 		switch name {
 		case "quic":
 			run = func(ctx context.Context) error {
-				_, err := tunnel.ProbeQUICContext(ctx, *server, secret, *timeout, tlsCfg)
+				_, err := tunnel.ProbeQUICContextAuth(ctx, *server, auth, *timeout, tlsCfg)
 				return err
 			}
 		case "tls":
 			run = func(ctx context.Context) error {
-				_, err := tunnel.ProbeTLSContext(ctx, *server, secret, *timeout, tlsCfg)
+				_, err := tunnel.ProbeTLSContextAuth(ctx, *server, auth, *timeout, tlsCfg)
 				return err
 			}
 		case "tcp":
 			run = func(ctx context.Context) error {
-				_, err := tunnel.ProbeTCPContext(ctx, *server, secret, *timeout)
+				_, err := tunnel.ProbeTCPContextAuth(ctx, *server, auth, *timeout)
 				return err
 			}
 		default:
@@ -119,6 +122,15 @@ func main() {
 			result.Jitter.Round(time.Millisecond),
 		)
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func splitTransports(value string) []string {
