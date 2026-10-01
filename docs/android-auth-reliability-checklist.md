@@ -34,8 +34,8 @@ Release target: Android 1.0.11-alpha.
 - [x] Keep legacy profile TCP fallback test.
 - [x] Run full `go test ./...` on Go 1.27.
 - [x] Run shell syntax checks for deployment scripts.
-- [ ] GitHub Android build must pass before merge.
-- [ ] Signed APK SHA-256 must be written back by release workflow after merge.
+- [x] GitHub Android build passed before merge.
+- [x] Signed APK SHA-256 was written back by the release workflow after merge: `c071b2db4ef0842fe4cbe60ccd4ee8ff4ffa3c0b143a643c70b8e78e37a92fbe`.
 
 ## Scope note
 
