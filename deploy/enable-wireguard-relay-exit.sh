@@ -16,7 +16,9 @@ KEY_DIR="/etc/chameleon/wg-relay"
 PRIVATE_KEY="${KEY_DIR}/private.key"
 WG_CONFIG="/etc/wireguard/${WG_IF}.conf"
 SOURCE_PROFILE="/etc/chameleon/client-profile.txt"
+SOURCE_V2_PROFILE="/etc/chameleon/client-profile-v2.txt"
 RELAY_PROFILE="/etc/chameleon/client-profile-relay.txt"
+RELAY_V2_PROFILE="/etc/chameleon/client-profile-relay-v2.txt"
 
 log() { printf '[chameleon-wg] %s\n' "$*" >&2; }
 die() { printf '[chameleon-wg] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -90,8 +92,28 @@ ${server_name:+CHAMELEON_TLS_SERVER_NAME=$server_name}
 EOF
 chmod 0600 "$RELAY_PROFILE"
 
+if [ -s "$SOURCE_V2_PROFILE" ]; then
+  client_id="$(awk -F= '$1=="CHAMELEON_CLIENT_ID"{print substr($0,index($0,"=")+1); exit}' "$SOURCE_V2_PROFILE")"
+  client_secret="$(awk -F= '$1=="CHAMELEON_CLIENT_SECRET"{print substr($0,index($0,"=")+1); exit}' "$SOURCE_V2_PROFILE")"
+  if [ -n "$client_id" ] && [ -n "$client_secret" ]; then
+    cat > "$RELAY_V2_PROFILE" <<EOF
+CHAMELEON_SERVER=$INGRESS_HOST:$RELAY_PORT
+CHAMELEON_QUIC_SERVER=$INGRESS_HOST:$RELAY_PORT
+CHAMELEON_TLS_SERVER=$INGRESS_HOST:$RELAY_PORT
+CHAMELEON_CLIENT_ID=$client_id
+CHAMELEON_CLIENT_SECRET=$client_secret
+CHAMELEON_TLS_FINGERPRINT=$fingerprint
+CHAMELEON_TCP_TRANSPORT=tls
+CHAMELEON_UDP_MODE=auto
+${server_name:+CHAMELEON_TLS_SERVER_NAME=$server_name}
+EOF
+    chmod 0600 "$RELAY_V2_PROFILE"
+  fi
+fi
+
 log "Server 1 is paired with Server 2"
 printf 'Private relay link: %s <-> %s\n' "$INGRESS_WG_IP" "10.77.0.2"
 printf 'Client ingress: %s:%s TCP+UDP\n' "$INGRESS_HOST" "$RELAY_PORT"
-printf 'Relay client profile: %s\n' "$RELAY_PROFILE"
+printf 'Relay legacy profile: %s\n' "$RELAY_PROFILE"
+[ -s "$RELAY_V2_PROFILE" ] && printf 'Relay Auth v2 profile: %s\n' "$RELAY_V2_PROFILE"
 printf 'Expected public exit after Chameleon: the original Server 1 public IP.\n'
