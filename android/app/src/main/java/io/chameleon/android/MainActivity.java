@@ -37,8 +37,9 @@ import mobile.Mobile;
 /**
  * One-button Android client for the shared Chameleon core.
  *
- * Mode changes are persisted immediately; the user no longer has to import the
- * profile again after switching Smart/Proxy.
+ * Smart, Inspector and VPN are real Android VpnService modes on Android 10+.
+ * Inspector replaces the old local-only Proxy mode with a visible traffic
+ * analysis workspace and PCAP capture.
  */
 public final class MainActivity extends Activity {
     private static final int PICK_PROFILE = 2001;
@@ -157,9 +158,9 @@ public final class MainActivity extends Activity {
 
         modeSpinner = new Spinner(this);
         String[] modes = {
-                "Smart — direct + Chameleon",
-                "Proxy — только Chameleon",
-                "VPN — весь телефон через Chameleon"
+                "Smart — системный VPN: direct + Chameleon",
+                "Inspector — сниффер трафика + Chameleon",
+                "VPN — весь телефон только через Chameleon"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this,
@@ -209,7 +210,7 @@ public final class MainActivity extends Activity {
         root.addView(doctorButton, doctorParams);
 
         TextView note = label(
-                "Быстрый запуск Smart доступен из шторки уведомлений, панели быстрых настроек и виджета рабочего стола.",
+                "Inspector записывает трафик только после явного запуска и сохраняет захват локально на устройстве.",
                 12,
                 R.color.textSecondary
         );
@@ -226,7 +227,7 @@ public final class MainActivity extends Activity {
         String mode = (!AppFiles.hasConfig(this) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 ? "vpn"
                 : AppFiles.runtimeMode(this);
-        int position = "vpn".equals(mode) ? 2 : ("proxy".equals(mode) ? 1 : 0);
+        int position = "vpn".equals(mode) ? 2 : ("inspector".equals(mode) ? 1 : 0);
         modeSpinner.setSelection(position, false);
         modeEventsEnabled = true;
         updateCompatibilityLabel();
@@ -235,7 +236,7 @@ public final class MainActivity extends Activity {
     private String selectedMode() {
         int position = modeSpinner.getSelectedItemPosition();
         if (position == 2) return "vpn";
-        if (position == 1) return "proxy";
+        if (position == 1) return "inspector";
         return "smart";
     }
 
@@ -247,7 +248,7 @@ public final class MainActivity extends Activity {
         if (!AppFiles.hasConfig(this)) return;
 
         try {
-            String coreMode = "vpn".equals(mode) ? "proxy" : mode;
+            String coreMode = "smart".equals(mode) ? "smart" : "proxy";
             AppFiles.setCoreMode(this, coreMode);
 
             if (ChameleonVpnService.running()) {
@@ -269,14 +270,14 @@ public final class MainActivity extends Activity {
         boolean smart = position == 0;
         String label;
         if (smart) {
-            label = "● Smart • можно использовать вместе с другим VPN";
-        } else if (position == 2) {
-            label = "● Системный VPN • одновременно активен только один VPN";
+            label = "● Smart VPN • direct + Chameleon";
+        } else if (position == 1) {
+            label = "● Inspector • захват трафика через системный VPN";
         } else {
-            label = "● Proxy • системный VPN-слот не используется";
+            label = "● VPN • весь трафик только через Chameleon";
         }
         coexistText.setText(label);
-        coexistText.setTextColor(color(position == 2 ? R.color.textSecondary : R.color.success));
+        coexistText.setTextColor(color(R.color.textSecondary));
     }
 
     private void toggleConnection() {
@@ -299,56 +300,45 @@ public final class MainActivity extends Activity {
         }
 
         String mode = selectedMode();
-        if ("vpn".equals(mode)) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                Toast.makeText(
-                        this,
-                        "VPN mode требует Android 10 или новее; Smart/Proxy работают с Android 6+",
-                        Toast.LENGTH_LONG
-                ).show();
-                return;
-            }
-            Intent permission = VpnService.prepare(this);
-            if (permission != null) {
-                startActivityForResult(permission, REQUEST_VPN);
-            } else {
-                startVpn();
-            }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(
+                    this,
+                    "Smart, Inspector и VPN требуют Android 10 или новее",
+                    Toast.LENGTH_LONG
+            ).show();
             return;
         }
 
+        AppFiles.setRuntimeMode(this, mode);
+        Intent permission = VpnService.prepare(this);
+        if (permission != null) {
+            startActivityForResult(permission, REQUEST_VPN);
+        } else {
+            startVpn();
+        }
+    }
+
+    private void startVpn() {
+        String mode = selectedMode();
         try {
-            AppFiles.setCoreMode(this, mode);
             AppFiles.setRuntimeMode(this, mode);
+            AppFiles.setCoreMode(this, "smart".equals(mode) ? "smart" : "proxy");
         } catch (Exception error) {
             Toast.makeText(this, "Ошибка режима: " + error.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
-        Intent start = new Intent(this, ChameleonService.class);
-        start.setAction(ChameleonService.ACTION_START);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(start);
-        } else {
-            startService(start);
-        }
-    }
-
-    private void startVpn() {
-        try {
-            AppFiles.setRuntimeMode(this, "vpn");
-            AppFiles.setCoreMode(this, "proxy");
-        } catch (Exception error) {
-            Toast.makeText(this, "Ошибка VPN режима: " + error.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-
         Intent start = new Intent(this, ChameleonVpnService.class);
         start.setAction(ChameleonVpnService.ACTION_START);
+        start.putExtra(ChameleonVpnService.EXTRA_MODE, mode);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(start);
         } else {
             startService(start);
+        }
+
+        if ("inspector".equals(mode)) {
+            startActivity(new Intent(this, InspectorActivity.class));
         }
     }
 
