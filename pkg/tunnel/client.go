@@ -10,13 +10,19 @@ import (
 // RawDialFunc opens the TCP connection to the Chameleon server.
 type RawDialFunc func(context.Context, string) (net.Conn, error)
 
-// DialContext opens one authenticated Chameleon TCP tunnel to destination.
+// DialContext opens one legacy-PSK authenticated Chameleon TCP tunnel.
 func DialContext(ctx context.Context, serverAddress, destination, psk string, timeout time.Duration) (net.Conn, error) {
+	return DialContextAuth(ctx, serverAddress, destination, ClientAuth{PSK: psk}, timeout)
+}
+
+// DialContextAuth opens one Chameleon TCP tunnel using Auth v2 when
+// ClientID/ClientSecret are present, otherwise the legacy PSK handshake.
+func DialContextAuth(ctx context.Context, serverAddress, destination string, auth ClientAuth, timeout time.Duration) (net.Conn, error) {
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
 	dialer := &net.Dialer{Timeout: timeout}
-	return DialContextWithDialer(ctx, serverAddress, destination, psk, timeout, func(ctx context.Context, address string) (net.Conn, error) {
+	return DialContextWithDialerAuth(ctx, serverAddress, destination, auth, timeout, func(ctx context.Context, address string) (net.Conn, error) {
 		return dialer.DialContext(ctx, "tcp", address)
 	})
 }
@@ -25,11 +31,18 @@ func DialContext(ctx context.Context, serverAddress, destination, psk string, ti
 // first hop. The local proxy uses this to apply a learned first-write strategy
 // only to the connection visible to the local network.
 func DialContextWithDialer(ctx context.Context, serverAddress, destination, psk string, timeout time.Duration, dial RawDialFunc) (net.Conn, error) {
+	return DialContextWithDialerAuth(ctx, serverAddress, destination, ClientAuth{PSK: psk}, timeout, dial)
+}
+
+func DialContextWithDialerAuth(ctx context.Context, serverAddress, destination string, auth ClientAuth, timeout time.Duration, dial RawDialFunc) (net.Conn, error) {
 	if stringsTrim(serverAddress) == "" {
 		return nil, fmt.Errorf("server address must not be empty")
 	}
 	if dial == nil {
 		return nil, fmt.Errorf("raw dial function is nil")
+	}
+	if err := auth.Validate(); err != nil {
+		return nil, err
 	}
 	if timeout <= 0 {
 		timeout = 8 * time.Second
@@ -40,7 +53,7 @@ func DialContextWithDialer(ctx context.Context, serverAddress, destination, psk 
 		return nil, fmt.Errorf("dial tunnel server: %w", err)
 	}
 
-	secure, err := clientHandshake(conn, destination, psk, timeout)
+	secure, err := clientHandshakeAuth(conn, destination, auth, timeout)
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -49,6 +62,17 @@ func DialContextWithDialer(ctx context.Context, serverAddress, destination, psk 
 }
 
 func clientHandshake(conn net.Conn, destination, psk string, timeout time.Duration) (*SecureConn, error) {
+	return clientHandshakeAuth(conn, destination, ClientAuth{PSK: psk}, timeout)
+}
+
+func clientHandshakeAuth(conn net.Conn, destination string, auth ClientAuth, timeout time.Duration) (*SecureConn, error) {
+	if auth.UsesV2() {
+		return clientHandshakeV2(conn, destination, auth, timeout)
+	}
+	return clientHandshakeLegacy(conn, destination, auth.PSK, timeout)
+}
+
+func clientHandshakeLegacy(conn net.Conn, destination, psk string, timeout time.Duration) (*SecureConn, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("connection is nil")
 	}
