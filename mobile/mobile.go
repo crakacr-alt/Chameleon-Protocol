@@ -146,6 +146,7 @@ func PrepareVPNConfig(configJSON string) string {
 	// keep udp_mode=auto so the runtime carries DNS over the selected TCP
 	// Chameleon stream without leaking direct UDP.
 	cfg.UDPMode = "auto"
+	udpReady := false
 	if strings.TrimSpace(cfg.QUICServer) != "" {
 		for _, endpoint := range preferredEndpoints(cfg.QUICServer, "443") {
 			const udpProbeTimeout = 6 * time.Second
@@ -158,9 +159,16 @@ func PrepareVPNConfig(configJSON string) string {
 				_ = session.Close()
 				cfg.QUICServer = endpoint
 				cfg.UDPMode = "quic"
+				udpReady = true
 				break
 			}
 		}
+	}
+	// Do not keep a dead QUIC endpoint in an authenticated mobile config.
+	// Otherwise every DNS request can pay another UDP timeout even though the
+	// preflight has already proved that this network/relay has no QUIC path.
+	if !udpReady && selectedTCP != "quic" {
+		cfg.QUICServer = ""
 	}
 
 	data, err := clientconfig.JSON(cfg)
