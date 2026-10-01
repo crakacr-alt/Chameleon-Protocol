@@ -68,6 +68,11 @@ func PrepareVPNConfig(configJSON string) string {
 		ServerName:   cfg.TLSServerName,
 		PinnedSHA256: cfg.TLSFingerprint,
 	}
+	auth := tunnel.ClientAuth{
+		PSK:          cfg.PSK,
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+	}
 	// Mobile radio wake-up plus the Server-2 -> WireGuard -> Server-1 hop can
 	// exceed a couple of seconds even when the service is healthy. A short
 	// preflight deadline made Android report a TLS context deadline before the
@@ -92,7 +97,7 @@ func PrepareVPNConfig(configJSON string) string {
 			}
 			for _, endpoint := range preferredEndpoints(cfg.TLSServer, "443") {
 				probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-				_, probeErr := tunnel.ProbeTLSWithDialer(probeCtx, endpoint, cfg.PSK, probeTimeout, tlsCfg, probeDial)
+				_, probeErr := tunnel.ProbeTLSWithDialerAuth(probeCtx, endpoint, auth, probeTimeout, tlsCfg, probeDial)
 				cancel()
 				if probeErr == nil {
 					cfg.TLSServer = endpoint
@@ -110,7 +115,7 @@ func PrepareVPNConfig(configJSON string) string {
 	if selectedTCP == "" && strings.TrimSpace(cfg.QUICServer) != "" {
 		for _, endpoint := range preferredEndpoints(cfg.QUICServer, "443") {
 			probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-			_, probeErr := tunnel.ProbeQUICContext(probeCtx, endpoint, cfg.PSK, probeTimeout, tlsCfg)
+			_, probeErr := tunnel.ProbeQUICContextAuth(probeCtx, endpoint, auth, probeTimeout, tlsCfg)
 			cancel()
 			if probeErr == nil {
 				cfg.QUICServer = endpoint
@@ -123,7 +128,7 @@ func PrepareVPNConfig(configJSON string) string {
 
 	if selectedTCP == "" && strings.TrimSpace(cfg.TCPServer) != "" {
 		probeCtx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-		_, probeErr := tunnel.ProbeTCPContext(probeCtx, cfg.TCPServer, cfg.PSK, probeTimeout)
+		_, probeErr := tunnel.ProbeTCPContextAuth(probeCtx, cfg.TCPServer, auth, probeTimeout)
 		cancel()
 		if probeErr == nil {
 			selectedTCP = "tcp"
@@ -152,8 +157,8 @@ func PrepareVPNConfig(configJSON string) string {
 		for _, endpoint := range preferredEndpoints(cfg.QUICServer, "443") {
 			const udpProbeTimeout = 6 * time.Second
 			probeCtx, cancel := context.WithTimeout(context.Background(), udpProbeTimeout)
-			session, probeErr := tunnel.DialQUICDatagramSession(
-				probeCtx, endpoint, cfg.PSK, udpProbeTimeout, tlsCfg,
+			session, probeErr := tunnel.DialQUICDatagramSessionAuth(
+				probeCtx, endpoint, auth, udpProbeTimeout, tlsCfg,
 			)
 			cancel()
 			if probeErr == nil {
