@@ -12,8 +12,8 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Centralizes private app state. The JSON config contains the tunnel PSK and
- * therefore never leaves the Android application sandbox.
+ * Centralizes private app state. Tunnel credentials and Inspector captures
+ * stay inside the Android application sandbox until the user explicitly exports them.
  */
 final class AppFiles {
     private static final String CONFIG_FILE = "client.json";
@@ -29,6 +29,14 @@ final class AppFiles {
 
     static File tunConfigFile(Context context) {
         return new File(context.getFilesDir(), "tun2socks.yml");
+    }
+
+    static File captureFile(Context context) {
+        return new File(context.getFilesDir(), "chameleon-inspector.pcap");
+    }
+
+    static File inspectorFlowFile(Context context) {
+        return new File(context.getFilesDir(), "chameleon-inspector-flows.jsonl");
     }
 
     static boolean hasConfig(Context context) {
