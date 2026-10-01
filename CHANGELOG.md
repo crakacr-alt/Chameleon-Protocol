@@ -2,7 +2,7 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
-## [1.1.0-alpha] - 2026-10-01
+## [1.1.0-alpha] - 2026-10-02
 
 ### Added
 
@@ -35,7 +35,9 @@
 - full `go test ./...` passed locally on Go 1.27.1;
 - deployment shell scripts passed `bash -n`;
 - Python helper scripts passed `py_compile`;
-- patched tun2socks native code compiled successfully before CI.
+- patched tun2socks native code compiled successfully before CI;
+- live Auth v2 TLS relay `80.86.216.169:443 -> HAProxy -> WireGuard -> exit` returned public IP `88.210.20.127`;
+- the existing legacy PSK profile continued to work after the live server upgrade.
 
 ## [Android 1.0.12-alpha] - 2026-10-01
 
