@@ -19,7 +19,8 @@ func main() {
 	showVersion := flag.Bool("version", false, "print Chameleon version and exit")
 	listen := flag.String("listen", firstNonEmpty(os.Getenv("CHAMELEON_LISTEN"), ":9443"), "TCP address for Chameleon tunnel")
 	quicListen := flag.String("quic-listen", os.Getenv("CHAMELEON_QUIC_LISTEN"), "optional UDP address for QUIC carrier")
-	psk := flag.String("psk", "", "required pre-shared key for tunnel authentication")
+	psk := flag.String("psk", "", "legacy pre-shared key for tunnel authentication")
+	clientsFile := flag.String("clients-file", os.Getenv("CHAMELEON_CLIENTS_FILE"), "optional Auth v2 clients JSON file")
 	handshakeTimeout := flag.Duration("handshake-timeout", 8*time.Second, "client handshake timeout")
 	dialTimeout := flag.Duration("dial-timeout", 8*time.Second, "destination dial timeout")
 	allowPrivate := flag.Bool("allow-private", false, "allow tunnel egress to private/loopback server networks")
@@ -34,8 +35,17 @@ func main() {
 	}
 
 	tunnelPSK := firstNonEmpty(*psk, os.Getenv("CHAMELEON_TUNNEL_PSK"))
-	if tunnelPSK == "" {
-		fmt.Fprintln(os.Stderr, "error: --psk or CHAMELEON_TUNNEL_PSK is required")
+	var clients *tunnel.ClientRegistry
+	if *clientsFile != "" {
+		var err error
+		clients, err = tunnel.LoadClientRegistry(*clientsFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: load Auth v2 clients: %v\n", err)
+			os.Exit(2)
+		}
+	}
+	if tunnelPSK == "" && (clients == nil || clients.Len() == 0) {
+		fmt.Fprintln(os.Stderr, "error: configure CHAMELEON_CLIENTS_FILE/Auth v2 clients or legacy CHAMELEON_TUNNEL_PSK")
 		os.Exit(2)
 	}
 
@@ -52,6 +62,7 @@ func main() {
 
 	server, err := tunnel.NewServer(tunnel.ServerConfig{
 		PSK:                      tunnelPSK,
+		Clients:                  clients,
 		HandshakeTimeout:         *handshakeTimeout,
 		DialTimeout:              *dialTimeout,
 		AllowPrivateDestinations: *allowPrivate,
