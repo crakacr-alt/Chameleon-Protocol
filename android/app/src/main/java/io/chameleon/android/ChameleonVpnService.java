@@ -65,6 +65,7 @@ public final class ChameleonVpnService extends VpnService {
         }
 
         startForeground(NOTIFICATION_ID, notification("Подключение VPN…"));
+        AppFiles.clearLastVpnError(this);
         stopping = false;
         starting = true;
         active = false;
@@ -99,6 +100,10 @@ public final class ChameleonVpnService extends VpnService {
             Log.i(TAG, "remote transport selected: " + transport.toUpperCase()
                     + " endpoint=" + endpoint
                     + " udp=" + selected.optString("udp_mode", "auto"));
+
+            // Persist the authenticated/preflighted config. This keeps the next
+            // launch on the transport that was actually proven reachable.
+            AppFiles.writeConfig(this, vpnConfig);
 
             String error = Mobile.startOwned(vpnConfig, RUNTIME_OWNER);
             if (error != null && !error.isEmpty()) {
@@ -155,6 +160,7 @@ public final class ChameleonVpnService extends VpnService {
 
             starting = false;
             active = true;
+            AppFiles.clearLastVpnError(this);
             notifyState("VPN подключён • весь телефон через Chameleon");
             ChameleonWidget.updateAll(this);
             ChameleonTile.requestRefresh(this);
@@ -167,11 +173,15 @@ public final class ChameleonVpnService extends VpnService {
                 notifyState("VPN остановлен: TUN transport завершился");
             }
         } catch (PackageManager.NameNotFoundException error) {
-            notifyState("VPN ошибка: не удалось исключить Chameleon из собственного VPN");
+            String message = "Не удалось исключить Chameleon из собственного VPN";
+            AppFiles.setLastVpnError(this, message);
+            notifyState("VPN ошибка: " + message);
         } catch (Exception error) {
+            String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+            AppFiles.setLastVpnError(this, message);
             Log.e(TAG, "VPN startup failed: stage=" + Mobile.stage()
-                    + " error=" + error.getMessage(), error);
-            if (!stopping) notifyState("VPN ошибка: " + error.getMessage());
+                    + " error=" + message, error);
+            if (!stopping) notifyState("VPN ошибка: " + message);
         } finally {
             starting = false;
             if (!stopping) shutdown(true);

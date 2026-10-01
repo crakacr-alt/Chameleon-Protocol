@@ -223,7 +223,9 @@ public final class MainActivity extends Activity {
 
     private void restoreModeSelection() {
         modeEventsEnabled = false;
-        String mode = AppFiles.runtimeMode(this);
+        String mode = (!AppFiles.hasConfig(this) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                ? "vpn"
+                : AppFiles.runtimeMode(this);
         int position = "vpn".equals(mode) ? 2 : ("proxy".equals(mode) ? 1 : 0);
         modeSpinner.setSelection(position, false);
         modeEventsEnabled = true;
@@ -395,16 +397,10 @@ public final class MainActivity extends Activity {
 
             AppFiles.writeConfig(this, config);
             AppFiles.setRuntimeMode(this, mode);
-            JSONObject saved = new JSONObject(AppFiles.readConfig(this));
-            String importedEndpoint = saved.optString("tls_server",
-                    saved.optString("quic_server",
-                            saved.optString("tcp_server", "—")));
-            String importedTransport = saved.optString("tcp_transport", "auto");
-            Toast.makeText(this,
-                    "Профиль импортирован: " + importedEndpoint
-                            + " • " + importedTransport.toUpperCase(),
-                    Toast.LENGTH_LONG).show();
+            AppFiles.clearLastVpnError(this);
+            Toast.makeText(this, "Профиль сохранён. Проверяю сервер и авторизацию…", Toast.LENGTH_LONG).show();
             refreshState();
+            verifyImportedProfile(config, mode);
         } catch (Exception error) {
             new AlertDialog.Builder(this)
                     .setTitle("Ошибка профиля")
@@ -414,6 +410,66 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void verifyImportedProfile(String config, String mode) {
+        new Thread(() -> {
+            try {
+                String prepared = Mobile.prepareVPNConfig(config);
+                if (prepared.startsWith("ERROR:")) {
+                    String message = prepared.substring("ERROR:".length()).trim();
+                    AppFiles.setLastVpnError(this, message);
+                    runOnUiThread(() -> {
+                        refreshState();
+                        new AlertDialog.Builder(this)
+                                .setTitle("Профиль сохранён, но сервер не подтвердил подключение")
+                                .setMessage(message)
+                                .setPositiveButton("OK", null)
+                                .show();
+                    });
+                    return;
+                }
+
+                JSONObject selected = new JSONObject(prepared);
+                String transport = selected.optString("tcp_transport", "auto");
+                String endpoint;
+                if ("tls".equalsIgnoreCase(transport)) {
+                    endpoint = selected.optString("tls_server", "—");
+                } else if ("quic".equalsIgnoreCase(transport)) {
+                    endpoint = selected.optString("quic_server", "—");
+                } else {
+                    endpoint = selected.optString("tcp_server", "—");
+                }
+                String udp = "quic".equalsIgnoreCase(selected.optString("udp_mode", "auto"))
+                        ? "QUIC"
+                        : "DNS-over-TCP";
+
+                AppFiles.writeConfig(this, prepared);
+                AppFiles.setRuntimeMode(this, mode);
+                AppFiles.clearLastVpnError(this);
+
+                String success = "Авторизация OK • " + transport.toUpperCase()
+                        + " " + endpoint + " • UDP " + udp;
+                runOnUiThread(() -> {
+                    refreshState();
+                    new AlertDialog.Builder(this)
+                            .setTitle("Профиль готов")
+                            .setMessage(success)
+                            .setPositiveButton("Подключить", (dialog, which) -> toggleConnection())
+                            .setNegativeButton("Позже", null)
+                            .show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null
+                        ? error.getClass().getSimpleName()
+                        : error.getMessage();
+                AppFiles.setLastVpnError(this, message);
+                runOnUiThread(() -> {
+                    refreshState();
+                    Toast.makeText(this, "Ошибка проверки профиля: " + message, Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "chameleon-profile-verify").start();
+    }
+
     private void refreshState() {
         boolean vpn = ChameleonVpnService.running();
         boolean vpnStarting = ChameleonVpnService.starting();
@@ -421,10 +477,13 @@ public final class MainActivity extends Activity {
                 && Mobile.listenerReady() && !vpn;
         boolean running = vpn || vpnStarting || sidecar;
 
+        String persistedError = AppFiles.lastVpnError(this);
+        boolean failed = !running && !persistedError.isEmpty();
         stateText.setText(vpn
                 ? "VPN подключён"
-                : (vpnStarting ? "VPN подключается…" : (sidecar ? "Подключено" : "Отключено")));
-        stateText.setTextColor(color(running ? R.color.success : R.color.textPrimary));
+                : (vpnStarting ? "VPN подключается…"
+                : (sidecar ? "Подключено" : (failed ? "Ошибка подключения" : "Отключено"))));
+        stateText.setTextColor(color(running ? R.color.success : (failed ? R.color.danger : R.color.textPrimary)));
         powerButton.setBackground(circle(color(running ? R.color.success : R.color.accent)));
         serverText.setText(AppFiles.serverLabel(this));
         updateCompatibilityLabel();
@@ -433,11 +492,13 @@ public final class MainActivity extends Activity {
         if (vpn) {
             detailText.setText("VPN/TUN • весь телефон • SOCKS5 127.0.0.1:1080");
         } else if (vpnStarting) {
-            detailText.setText("Запуск SOCKS5 → TUN → tun2socks…");
+            detailText.setText("Проверка сервера → авторизация → SOCKS5 → TUN…");
         } else if (sidecar) {
             detailText.setText("SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase() + " активен");
+        } else if (failed) {
+            detailText.setText(persistedError);
         } else {
-            detailText.setText("SOCKS5 127.0.0.1:1080");
+            detailText.setText("Готов к подключению");
         }
     }
 
@@ -473,6 +534,7 @@ public final class MainActivity extends Activity {
                         ? "active"
                         : (ChameleonVpnService.starting() ? "starting" : "stopped");
                 String lastError = Mobile.lastError();
+                if (lastError.isEmpty()) lastError = AppFiles.lastVpnError(this);
 
                 String remoteStatus;
                 if (error.isEmpty()) {

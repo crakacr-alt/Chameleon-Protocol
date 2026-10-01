@@ -1,7 +1,23 @@
 {
   "schema": 1,
-  "latest": "1.0.10-alpha",
+  "latest": "1.0.11-alpha",
   "releases": [
+    {
+      "version": "1.0.11-alpha",
+      "protocol": "1.0.x-compatible",
+      "date": "2026-10-01",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.0.11-alpha/Chameleon-Android-1.0.11-alpha.apk",
+      "sha256": "",
+      "changes": [
+        "Профиль проверяет сервер и PSK-аутентификацию сразу после импорта.",
+        "Android 10+ по умолчанию предлагает системный VPN для всего телефона.",
+        "Подготовленный VPN-конфиг сохраняет реально рабочий TLS endpoint и transport.",
+        "Ошибки запуска VPN остаются видимыми в приложении после остановки сервиса.",
+        "TLS-only профили больше не получают ложные TCP/QUIC endpoints; нерабочий QUIC удаляется после preflight."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.0.10-alpha",
       "protocol": "1.0.6-compatible",

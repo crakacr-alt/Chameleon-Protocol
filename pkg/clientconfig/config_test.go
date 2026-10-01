@@ -32,6 +32,26 @@ CHAMELEON_UDP_MODE=auto
 	}
 }
 
+func TestImportExplicitTLSDoesNotInventOtherTransports(t *testing.T) {
+	cfg, err := ImportProfile(strings.NewReader(`
+CHAMELEON_SERVER=relay.example:443
+CHAMELEON_TLS_SERVER=relay.example:443
+CHAMELEON_TUNNEL_PSK=0123456789abcdef
+CHAMELEON_TLS_FINGERPRINT=aabbcc
+CHAMELEON_TCP_TRANSPORT=tls
+CHAMELEON_UDP_MODE=auto
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TLSServer != "relay.example:443" {
+		t.Fatalf("TLS endpoint missing: %+v", cfg)
+	}
+	if cfg.TCPServer != "" || cfg.QUICServer != "" {
+		t.Fatalf("explicit TLS-only profile invented unavailable transports: %+v", cfg)
+	}
+}
+
 func TestImportLegacyProfileAddsTCPFallback(t *testing.T) {
 	cfg, err := ImportProfile(strings.NewReader(`
 CHAMELEON_SERVER=relay.example:9443

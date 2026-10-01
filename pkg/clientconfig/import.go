@@ -12,6 +12,7 @@ import (
 // without breaking older clients.
 func ImportProfile(r io.Reader) (Config, error) {
 	cfg := Default()
+	var explicitQUIC, explicitTLS, explicitTCP bool
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -29,10 +30,13 @@ func ImportProfile(r io.Reader) (Config, error) {
 			cfg.Server = value
 		case "CHAMELEON_QUIC_SERVER":
 			cfg.QUICServer = value
+			explicitQUIC = true
 		case "CHAMELEON_TLS_SERVER":
 			cfg.TLSServer = value
+			explicitTLS = true
 		case "CHAMELEON_TCP_SERVER":
 			cfg.TCPServer = value
+			explicitTCP = true
 		case "CHAMELEON_TUNNEL_PSK":
 			cfg.PSK = value
 		case "CHAMELEON_TLS_FINGERPRINT":
@@ -48,16 +52,15 @@ func ImportProfile(r io.Reader) (Config, error) {
 	if err := scanner.Err(); err != nil {
 		return Config{}, fmt.Errorf("read profile: %w", err)
 	}
-	if cfg.QUICServer == "" && cfg.Server != "" {
+	// Legacy profiles that only contain CHAMELEON_SERVER predate explicit
+	// transport declarations. Preserve their historical all-carrier behavior.
+	//
+	// Once a profile explicitly declares at least one transport, however, do
+	// not invent the missing ones. A TLS listener is not automatically a raw
+	// Chameleon TCP listener, and a TCP relay does not imply UDP/QUIC support.
+	if cfg.Server != "" && !explicitQUIC && !explicitTLS && !explicitTCP {
 		cfg.QUICServer = cfg.Server
-	}
-	if cfg.TLSServer == "" && cfg.Server != "" {
 		cfg.TLSServer = cfg.Server
-	}
-	if cfg.TCPServer == "" && cfg.Server != "" {
-		// Older relay profiles predate the explicit TCP key. Preserve their
-		// raw Chameleon fallback so mobile clients can still reach a relay when
-		// TLS/QUIC payloads are blocked after TCP connect.
 		cfg.TCPServer = cfg.Server
 	}
 	if err := cfg.Validate(); err != nil {

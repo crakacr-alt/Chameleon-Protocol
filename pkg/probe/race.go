@@ -89,25 +89,28 @@ func RaceConnections(ctx context.Context, attempts []ConnAttempt) (ConnResult, [
 		}()
 	}
 
-	done := make(chan struct{})
+	// Close results only after every attempt has finished. Waiting on a separate
+	// done channel can race a final buffered failure: select may observe done
+	// first and return before draining that result.
 	go func() {
 		wg.Wait()
-		close(done)
+		close(results)
 	}()
 
 	failures := make([]ConnResult, 0, len(attempts))
 	for {
 		select {
-		case result := <-results:
+		case result, ok := <-results:
+			if !ok {
+				if len(failures) == 0 && ctx.Err() != nil {
+					return ConnResult{}, failures, ctx.Err()
+				}
+				return ConnResult{}, failures, fmt.Errorf("all connection probes failed")
+			}
 			if result.Err == nil && result.Conn != nil {
 				return result, failures, nil
 			}
 			failures = append(failures, result)
-		case <-done:
-			if len(failures) == 0 && ctx.Err() != nil {
-				return ConnResult{}, failures, ctx.Err()
-			}
-			return ConnResult{}, failures, fmt.Errorf("all connection probes failed")
 		case <-ctx.Done():
 			return ConnResult{}, failures, ctx.Err()
 		}
