@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import grp
 import secrets
 import sys
 import tempfile
@@ -29,6 +30,10 @@ def save(path, data):
             fh.write("\n")
         os.chmod(tmp, 0o640)
         os.replace(tmp, path)
+        try:
+            os.chown(path, 0, grp.getgrnam("chameleon").gr_gid)
+        except (KeyError, PermissionError):
+            pass
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
