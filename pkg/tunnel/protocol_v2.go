@@ -19,8 +19,8 @@ import (
 var authV2Magic = []byte{0x43, 0x48, 0x32, 0x00} // CH2\0
 
 const (
-	authV2Version byte = 2
-	maxClientIDLen     = 128
+	authV2Version  byte = 2
+	maxClientIDLen      = 128
 )
 
 // clientHandshakeV2 authenticates a per-client identity without relying on
