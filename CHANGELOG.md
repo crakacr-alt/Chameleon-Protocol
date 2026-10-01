@@ -2,6 +2,16 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.1.1-alpha] - 2026-10-02
+
+### Fixed
+
+- Android now takes ownership of the system VPN slot before remote transport preflight, replacing a previously active Happ/V2Ray-style VPN first.
+- Chameleon excludes its own package from the TUN before dialing the ingress so first-hop TLS/Auth v2 uses the real Wi-Fi/cellular underlay.
+- profile import is local-only validation; remote connectivity is verified at connect time instead of through whichever VPN happened to be active during import.
+- Doctor distinguishes Chameleon VPN from another active VPN and avoids false remote-server failures while the other VPN still owns the system slot.
+- server topology and Auth v2 credentials are unchanged; existing 1.1.0-alpha relay profiles remain valid.
+
 ## [1.1.0-alpha] - 2026-10-02
 
 ### Added
