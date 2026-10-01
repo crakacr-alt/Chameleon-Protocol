@@ -61,7 +61,8 @@ func PrepareVPNConfig(configJSON string) string {
 	if err != nil {
 		return "ERROR: " + err.Error()
 	}
-	cfg.Mode = clientconfig.ModeProxy
+	// Keep the caller-selected core mode. Full-device Smart also uses this
+	// preflight, but must retain direct + Chameleon routing after the TUN starts.
 
 	tlsCfg := tunnel.TLSClientConfig{
 		ServerName:   cfg.TLSServerName,
