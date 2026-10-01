@@ -8,6 +8,7 @@ INGRESS_PUBLIC_KEY="${2:-}"
 WG_PORT="${3:-51820}"
 RELAY_PORT="${4:-9443}"
 LOCAL_CHAMELEON_PORT="${5:-9443}"
+RELAY_QUIC="${CHAMELEON_RELAY_QUIC:-0}"
 
 WG_IF="wgcham0"
 WG_ADDR="10.77.0.2/24"
@@ -82,7 +83,6 @@ server_name="$(awk -F= '$1=="CHAMELEON_TLS_SERVER_NAME"{print substr($0,index($0
 umask 077
 cat > "$RELAY_PROFILE" <<EOF
 CHAMELEON_SERVER=$INGRESS_HOST:$RELAY_PORT
-CHAMELEON_QUIC_SERVER=$INGRESS_HOST:$RELAY_PORT
 CHAMELEON_TLS_SERVER=$INGRESS_HOST:$RELAY_PORT
 CHAMELEON_TUNNEL_PSK=$psk
 CHAMELEON_TLS_FINGERPRINT=$fingerprint
@@ -90,6 +90,9 @@ CHAMELEON_TCP_TRANSPORT=tls
 CHAMELEON_UDP_MODE=auto
 ${server_name:+CHAMELEON_TLS_SERVER_NAME=$server_name}
 EOF
+if [ "$RELAY_QUIC" = "1" ]; then
+  sed -i "/^CHAMELEON_TLS_SERVER=/a CHAMELEON_QUIC_SERVER=$INGRESS_HOST:$RELAY_PORT" "$RELAY_PROFILE"
+fi
 chmod 0600 "$RELAY_PROFILE"
 
 if [ -s "$SOURCE_V2_PROFILE" ]; then
@@ -98,7 +101,6 @@ if [ -s "$SOURCE_V2_PROFILE" ]; then
   if [ -n "$client_id" ] && [ -n "$client_secret" ]; then
     cat > "$RELAY_V2_PROFILE" <<EOF
 CHAMELEON_SERVER=$INGRESS_HOST:$RELAY_PORT
-CHAMELEON_QUIC_SERVER=$INGRESS_HOST:$RELAY_PORT
 CHAMELEON_TLS_SERVER=$INGRESS_HOST:$RELAY_PORT
 CHAMELEON_CLIENT_ID=$client_id
 CHAMELEON_CLIENT_SECRET=$client_secret
@@ -107,13 +109,20 @@ CHAMELEON_TCP_TRANSPORT=tls
 CHAMELEON_UDP_MODE=auto
 ${server_name:+CHAMELEON_TLS_SERVER_NAME=$server_name}
 EOF
+    if [ "$RELAY_QUIC" = "1" ]; then
+      sed -i "/^CHAMELEON_TLS_SERVER=/a CHAMELEON_QUIC_SERVER=$INGRESS_HOST:$RELAY_PORT" "$RELAY_V2_PROFILE"
+    fi
     chmod 0600 "$RELAY_V2_PROFILE"
   fi
 fi
 
 log "Server 1 is paired with Server 2"
 printf 'Private relay link: %s <-> %s\n' "$INGRESS_WG_IP" "10.77.0.2"
-printf 'Client ingress: %s:%s TCP+UDP\n' "$INGRESS_HOST" "$RELAY_PORT"
+if [ "$RELAY_QUIC" = "1" ]; then
+  printf 'Client ingress: %s:%s TLS/TCP + QUIC/UDP\n' "$INGRESS_HOST" "$RELAY_PORT"
+else
+  printf 'Client ingress: %s:%s TLS/TCP\n' "$INGRESS_HOST" "$RELAY_PORT"
+fi
 printf 'Relay legacy profile: %s\n' "$RELAY_PROFILE"
 [ -s "$RELAY_V2_PROFILE" ] && printf 'Relay Auth v2 profile: %s\n' "$RELAY_V2_PROFILE"
 printf 'Expected public exit after Chameleon: the original Server 1 public IP.\n'
