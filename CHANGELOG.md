@@ -2,6 +2,16 @@
 
 Здесь записываются заметные изменения проекта по версиям.
 
+## [1.1.2-alpha] - 2026-10-06
+
+- Android retries the alternate 443/9443 endpoint with the same TLS pin and authentication.
+- CLI doctor supports Auth v2 and reports the underlying probe failure.
+- Inspector adds individual packets, HEX/ASCII, view filters, pause and IPv6 extension-header parsing; removes the CA button because HTTPS decryption is not implemented.
+- Guided server setup offers Exit/Intermediate/Pair/Status, preserves existing exit ports, uses consistent defaults and displays Auth v2 profile paths.
+- Source bundles include `install.sh` to install their exact version.
+- Validated on an Android emulator with separate-UID DNS, HTTPS and UDP STUN requests through two live servers; TCP and UDP reported the exit IP. PCAP parsed successfully in Wireshark/tshark.
+- Physical-phone/carrier testing and a fresh two-VPS installation remain unverified. Inspector is a packet/flow viewer, not a complete Wireshark replacement.
+
 ## [1.1.1-alpha] - 2026-10-02
 
 ### Fixed

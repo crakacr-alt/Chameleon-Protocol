@@ -10,12 +10,13 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.security.KeyChain;
-import android.util.Base64;
+import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.ArrayAdapter;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -39,7 +40,6 @@ import java.util.Locale;
 import java.util.Map;
 
 import hev.htproxy.TProxyService;
-import mobile.Mobile;
 
 /**
  * Visible, user-started traffic inspector for the local Android device.
@@ -55,11 +55,19 @@ public final class InspectorActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, Flow> flows = new HashMap<>();
+    private final List<Packet> packets = new ArrayList<>();
 
     private TextView statusText;
     private TextView statsText;
     private TextView flowText;
+    private TextView headingText;
     private EditText filterText;
+    private ListView packetList;
+    private ArrayAdapter<String> packetAdapter;
+    private final List<Packet> visiblePackets = new ArrayList<>();
+    private boolean showPackets;
+    private boolean paused;
+    private long packetNumber;
 
     private long parsedOffset;
     private boolean pcapLittleEndian = true;
@@ -123,36 +131,67 @@ public final class InspectorActivity extends Activity {
         filterText.setSingleLine(true);
         root.addView(filterText, top(dp(14)));
 
+        Button view = button("Показать отдельные пакеты");
+        view.setOnClickListener(v -> {
+            showPackets = !showPackets;
+            view.setText(showPackets ? "Показать потоки" : "Показать отдельные пакеты");
+            refreshInspector();
+        });
+        root.addView(view, top(dp(8)));
+        Button pause = button("Пауза просмотра");
+        pause.setOnClickListener(v -> {
+            paused = !paused;
+            pause.setText(paused ? "Продолжить просмотр" : "Пауза просмотра");
+            if (!paused) refreshInspector();
+        });
+        root.addView(pause, top(dp(8)));
+
         Button export = button("Экспорт PCAP для Wireshark");
         export.setOnClickListener(v -> exportPcap());
         root.addView(export, top(dp(12)));
-
-        Button ca = button("Создать / установить Inspector CA");
-        ca.setOnClickListener(v -> installInspectorCA());
-        root.addView(ca, top(dp(8)));
 
         Button clear = button("Очистить захват");
         clear.setOnClickListener(v -> clearCapture());
         root.addView(clear, top(dp(8)));
 
         TextView caNote = text(
-                "HTTPS: CA устанавливается только через системный диалог Android. "
-                        + "Расшифровка возможна лишь для приложений, которые доверяют пользовательскому CA; "
-                        + "certificate pinning не обходится.",
+                "Захват содержит IP-пакеты, DNS и доступные имена TLS. "
+                        + "Содержимое HTTPS зашифровано: эта версия не выполняет TLS-расшифровку. "
+                        + "Для подробного анализа откройте экспорт PCAP в Wireshark.",
                 12, Color.rgb(148, 163, 184));
         root.addView(caNote, top(dp(12)));
 
-        TextView heading = text("АКТИВНЫЕ / НЕДАВНИЕ ПОТОКИ", 12, Color.rgb(148, 163, 184));
-        root.addView(heading, top(dp(22)));
+        headingText = text("АКТИВНЫЕ / НЕДАВНИЕ ПОТОКИ", 12, Color.rgb(148, 163, 184));
+        root.addView(headingText, top(dp(22)));
 
         flowText = text("Пока нет пакетов.", 13, Color.rgb(226, 232, 240));
         flowText.setTextIsSelectable(true);
         root.addView(flowText, top(dp(8)));
 
+        packetList = new ListView(this);
+        packetList.setBackgroundColor(Color.rgb(18, 28, 44));
+        packetAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, new ArrayList<>()) {
+            @Override public android.view.View getView(int position, android.view.View convertView,
+                    android.view.ViewGroup parent) {
+                TextView row = (TextView) super.getView(position, convertView, parent);
+                row.setTextColor(Color.rgb(226, 232, 240));
+                row.setTextSize(12);
+                return row;
+            }
+        };
+        packetList.setAdapter(packetAdapter);
+        packetList.setOnItemClickListener((parent, item, position, id) -> {
+            if (position < visiblePackets.size()) showPacket(visiblePackets.get(position));
+        });
+        root.addView(packetList, new LinearLayout.LayoutParams(-1, dp(360)));
+        packetList.setVisibility(android.view.View.GONE);
+
         return scroll;
     }
 
     private void refreshInspector() {
+        // Pausing freezes the display; the native writer continues capturing.
+        if (paused) return;
         boolean active = ChameleonVpnService.running()
                 && "inspector".equals(AppFiles.runtimeMode(this));
         File capture = AppFiles.captureFile(this);
@@ -181,6 +220,7 @@ public final class InspectorActivity extends Activity {
             }
         }
         renderFlows();
+        renderPackets();
     }
 
     private void parseNewPackets(File file) throws Exception {
@@ -190,6 +230,8 @@ public final class InspectorActivity extends Activity {
 
             if (parsedOffset == 0 || parsedOffset > length) {
                 flows.clear();
+                packets.clear();
+                packetNumber = 0;
                 parsedOffset = 24;
                 raf.seek(0);
                 byte[] global = new byte[24];
@@ -205,6 +247,9 @@ public final class InspectorActivity extends Activity {
                 } else {
                     throw new IllegalStateException("неизвестный PCAP header");
                 }
+                if (ByteBuffer.wrap(global).order(pcapLittleEndian
+                        ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN).getInt(20) != 101)
+                    throw new IllegalStateException("ожидается PCAP с RAW IP-пакетами");
             }
 
             raf.seek(parsedOffset);
@@ -237,6 +282,34 @@ public final class InspectorActivity extends Activity {
         if (packet.length < 20) return;
         int version = (packet[0] >>> 4) & 0x0f;
 
+        Packet entry = new Packet();
+        entry.number = ++packetNumber;
+        entry.when = when;
+        entry.length = packet.length;
+        entry.data = java.util.Arrays.copyOf(packet, Math.min(packet.length, 2048));
+        entry.summary = "IPv" + version + " • " + packet.length + " B";
+        try {
+            int addressOffset = version == 6 ? 8 : 12;
+            int addressLength = version == 6 ? 16 : 4;
+            String src = InetAddress.getByAddress(java.util.Arrays.copyOfRange(packet,
+                    addressOffset, addressOffset + addressLength)).getHostAddress();
+            String dst = InetAddress.getByAddress(java.util.Arrays.copyOfRange(packet,
+                    addressOffset + addressLength, addressOffset + 2 * addressLength)).getHostAddress();
+            int[] transport = version == 6 ? ipv6Transport(packet)
+                    : new int[]{(packet[0] & 15) * 4, packet[9] & 255};
+            int protocol = transport[1];
+            int offset = transport[0];
+            String proto = protocol == 6 ? "TCP" : protocol == 17 ? "UDP"
+                    : protocol == 1 || protocol == 58 ? "ICMP" : "IP " + protocol;
+            if ((protocol == 6 || protocol == 17) && offset + 4 <= packet.length) {
+                src += ":" + u16(packet, offset);
+                dst += ":" + u16(packet, offset + 2);
+            }
+            entry.summary = proto + " " + src + " → " + dst + " • " + packet.length + " B";
+        } catch (Exception ignored) { }
+        packets.add(entry);
+        if (packets.size() > 200) packets.remove(0);
+
         try {
             if (version == 4) {
                 parseIpv4(packet, when);
@@ -250,6 +323,7 @@ public final class InspectorActivity extends Activity {
     private void parseIpv4(byte[] p, long when) throws Exception {
         int ihl = (p[0] & 0x0f) * 4;
         if (ihl < 20 || p.length < ihl + 4) return;
+        if ((u16(p, 6) & 0x1fff) != 0) return; // noninitial IP fragment
         int protocol = p[9] & 0xff;
         byte[] srcRaw = new byte[4];
         byte[] dstRaw = new byte[4];
@@ -261,13 +335,31 @@ public final class InspectorActivity extends Activity {
 
     private void parseIpv6(byte[] p, long when) throws Exception {
         if (p.length < 44) return;
-        int protocol = p[6] & 0xff;
+        int[] transport = ipv6Transport(p);
         byte[] srcRaw = new byte[16];
         byte[] dstRaw = new byte[16];
         System.arraycopy(p, 8, srcRaw, 0, 16);
         System.arraycopy(p, 24, dstRaw, 0, 16);
-        handleTransport(p, 40, protocol,
+        handleTransport(p, transport[0], transport[1],
                 InetAddress.getByAddress(srcRaw), InetAddress.getByAddress(dstRaw), when);
+    }
+
+    private static int[] ipv6Transport(byte[] p) {
+        int offset = 40;
+        int protocol = p[6] & 255;
+        for (int count = 0; count < 8; count++) {
+            if (protocol != 0 && protocol != 43 && protocol != 60 && protocol != 51 && protocol != 44)
+                return new int[]{offset, protocol};
+            if (offset + 8 > p.length) return new int[]{p.length, -1};
+            if (protocol == 44 && (u16(p, offset + 2) & 0xfff8) != 0)
+                return new int[]{p.length, -1};
+            int size = protocol == 44 ? 8 : protocol == 51
+                    ? ((p[offset + 1] & 255) + 2) * 4 : ((p[offset + 1] & 255) + 1) * 8;
+            protocol = p[offset] & 255;
+            offset += size;
+            if (offset > p.length) return new int[]{p.length, -1};
+        }
+        return new int[]{p.length, -1};
     }
 
     private void handleTransport(
@@ -290,6 +382,10 @@ public final class InspectorActivity extends Activity {
 
         Flow flow = flows.get(key);
         if (flow == null) {
+            if (flows.size() >= 2048) {
+                Flow oldest = Collections.min(flows.values(), Comparator.comparingLong(f -> f.lastSeen));
+                flows.values().remove(oldest);
+            }
             flow = new Flow();
             flow.protocol = proto;
             flow.local = local.getHostAddress() + ":" + localPort;
@@ -313,7 +409,7 @@ public final class InspectorActivity extends Activity {
         if (payloadOffset >= p.length) return;
 
         if (remotePort == 53 || localPort == 53) {
-            String q = parseDnsName(p, payloadOffset);
+            String q = parseDnsName(p, payloadOffset + (protocol == 6 ? 2 : 0));
             if (q != null && !q.isEmpty()) flow.detail = "DNS " + q;
         } else if (protocol == 6) {
             String sni = parseTlsSni(p, payloadOffset);
@@ -437,6 +533,7 @@ public final class InspectorActivity extends Activity {
     }
 
     private void renderFlows() {
+        flowText.setVisibility(showPackets ? android.view.View.GONE : android.view.View.VISIBLE);
         String filter = filterText == null ? "" : filterText.getText().toString().trim().toLowerCase(Locale.ROOT);
         List<Flow> list = new ArrayList<>(flows.values());
         Collections.sort(list, Comparator.comparingLong((Flow f) -> f.lastSeen).reversed());
@@ -455,6 +552,49 @@ public final class InspectorActivity extends Activity {
         flowText.setText(out.length() == 0 ? "Пока нет подходящих потоков." : out.toString());
     }
 
+    private void renderPackets() {
+        headingText.setText(showPackets ? "ПОСЛЕДНИЕ 200 ПАКЕТОВ • НАЖМИТЕ ДЛЯ HEX/ASCII"
+                : "АКТИВНЫЕ / НЕДАВНИЕ ПОТОКИ");
+        packetList.setVisibility(showPackets ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (!showPackets) return;
+        String filter = filterText.getText().toString().trim().toLowerCase(Locale.ROOT);
+        visiblePackets.clear();
+        packetAdapter.clear();
+        for (int i = packets.size() - 1; i >= 0; i--) {
+            Packet packet = packets.get(i);
+            if (!filter.isEmpty() && !packet.summary.toLowerCase(Locale.ROOT).contains(filter)) continue;
+            visiblePackets.add(packet);
+            packetAdapter.add("#" + packet.number + " " + packet.summary);
+        }
+    }
+
+    private void showPacket(Packet packet) {
+        StringBuilder out = new StringBuilder(packet.summary);
+        out.append("\n").append(new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date(packet.when)));
+        out.append("\n\nOffset  HEX                      ASCII\n");
+        for (int offset = 0; offset < packet.data.length; offset += 8) {
+            out.append(String.format(Locale.US, "%04x    ", offset));
+            for (int i = 0; i < 8; i++) out.append(offset + i < packet.data.length
+                    ? String.format(Locale.US, "%02x ", packet.data[offset + i] & 255) : "   ");
+            out.append(" ");
+            for (int i = offset; i < Math.min(offset + 8, packet.data.length); i++) {
+                int value = packet.data[i] & 255;
+                out.append(value >= 32 && value < 127 ? (char) value : '.');
+            }
+            out.append('\n');
+        }
+        if (packet.length > packet.data.length) out.append("\nПоказаны первые 2048 байт; полный пакет есть в PCAP.");
+        TextView detail = text(out.toString(), 11, Color.WHITE);
+        detail.setTypeface(Typeface.MONOSPACE);
+        detail.setTextIsSelectable(true);
+        detail.setPadding(dp(12), dp(12), dp(12), dp(12));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(Color.rgb(10, 17, 30));
+        scroll.addView(detail);
+        new AlertDialog.Builder(this).setTitle("Пакет #" + packet.number)
+                .setView(scroll).setPositiveButton("Закрыть", null).show();
+    }
+
     private void exportPcap() {
         File capture = AppFiles.captureFile(this);
         if (!capture.isFile() || capture.length() <= 24) {
@@ -467,23 +607,6 @@ public final class InspectorActivity extends Activity {
         intent.setType("application/vnd.tcpdump.pcap");
         intent.putExtra(Intent.EXTRA_TITLE, "chameleon-" + stamp + ".pcap");
         startActivityForResult(intent, EXPORT_PCAP);
-    }
-
-    private void installInspectorCA() {
-        String encoded = Mobile.ensureInspectorCA(getFilesDir().getAbsolutePath());
-        if (encoded == null || encoded.startsWith("ERROR:")) {
-            Toast.makeText(this, encoded == null ? "Не удалось создать CA" : encoded, Toast.LENGTH_LONG).show();
-            return;
-        }
-        try {
-            byte[] der = Base64.decode(encoded, Base64.DEFAULT);
-            Intent install = KeyChain.createInstallIntent();
-            install.putExtra(KeyChain.EXTRA_CERTIFICATE, der);
-            install.putExtra(KeyChain.EXTRA_NAME, "Chameleon Inspector Local CA");
-            startActivity(install);
-        } catch (Exception error) {
-            Toast.makeText(this, "Не удалось открыть установщик CA: " + error.getMessage(), Toast.LENGTH_LONG).show();
-        }
     }
 
     private void clearCapture() {
@@ -501,6 +624,8 @@ public final class InspectorActivity extends Activity {
             return;
         }
         flows.clear();
+        packets.clear();
+        packetNumber = 0;
         parsedOffset = 0;
         refreshInspector();
     }
@@ -579,5 +704,13 @@ public final class InspectorActivity extends Activity {
         long bytes;
         long firstSeen;
         long lastSeen;
+    }
+
+    private static final class Packet {
+        long number;
+        long when;
+        int length;
+        byte[] data;
+        String summary;
     }
 }

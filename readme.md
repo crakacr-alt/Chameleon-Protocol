@@ -1,5 +1,10 @@
 # Chameleon Protocol
 
+Последний Android-релиз: [1.1.2-alpha](https://github.com/crakacr-alt/Chameleon-Protocol/releases/tag/android-v1.1.2-alpha).
+VPN требует Android 10+. [Руководство установки Exit и промежуточного сервера](docs/network_installer.md)
+описывает сопряжение и расположение клиентских профилей. Inspector показывает
+пакеты/потоки и экспортирует PCAP; расшифровка HTTPS не реализована.
+
 Chameleon Protocol — исследовательский адаптивный transport-стек для нормализации сетевых потоков. Цель проекта: обеспечить управляемую непредсказуемость трафика для тестирования устойчивости сетевых фильтров и классификаторов. Текущая версия включает экспериментальный authenticated handshake (Ed25519 + X25519), TOFU-пиннинг identity, peer-shared session key через HKDF, persistent identity/route stores, state-sync для ротации профилей по epoch и стабильный pkg/normalizer API.
 
 ## Что уже сделано

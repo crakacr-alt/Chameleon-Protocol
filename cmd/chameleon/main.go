@@ -210,22 +210,27 @@ func runDoctor(args []string) {
 		ServerName:   cfg.TLSServerName,
 		PinnedSHA256: cfg.TLSFingerprint,
 	}
+	auth := tunnel.ClientAuth{
+		PSK:          cfg.PSK,
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+	}
 	ctx := context.Background()
 	if cfg.QUICServer != "" {
 		report.Checks = append(report.Checks, measureCheck(ctx, "quic", cfg.QUICServer, *samples, func(ctx context.Context) error {
-			_, err := tunnel.ProbeQUICContext(ctx, cfg.QUICServer, cfg.PSK, 5*time.Second, tlsCfg)
+			_, err := tunnel.ProbeQUICContextAuth(ctx, cfg.QUICServer, auth, 5*time.Second, tlsCfg)
 			return err
 		}))
 	}
 	if cfg.TLSServer != "" {
 		report.Checks = append(report.Checks, measureCheck(ctx, "tls", cfg.TLSServer, *samples, func(ctx context.Context) error {
-			_, err := tunnel.ProbeTLSContext(ctx, cfg.TLSServer, cfg.PSK, 5*time.Second, tlsCfg)
+			_, err := tunnel.ProbeTLSContextAuth(ctx, cfg.TLSServer, auth, 5*time.Second, tlsCfg)
 			return err
 		}))
 	}
 	if cfg.TCPServer != "" {
 		report.Checks = append(report.Checks, measureCheck(ctx, "tcp", cfg.TCPServer, *samples, func(ctx context.Context) error {
-			_, err := tunnel.ProbeTCPContext(ctx, cfg.TCPServer, cfg.PSK, 5*time.Second)
+			_, err := tunnel.ProbeTCPContextAuth(ctx, cfg.TCPServer, auth, 5*time.Second)
 			return err
 		}))
 	}
@@ -275,6 +280,9 @@ func measureCheck(
 	}
 	if summary.Successes == 0 {
 		check.Error = fmt.Sprintf("%d/%d probes failed", summary.Failures, summary.Attempts)
+		if summary.Error != "" {
+			check.Error += ": " + summary.Error
+		}
 	}
 	return check
 }

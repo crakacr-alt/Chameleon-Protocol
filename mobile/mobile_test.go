@@ -25,6 +25,19 @@ func TestMobileProbeStrategiesPreferDirectTLS(t *testing.T) {
 	}
 }
 
+func TestPreferredEndpointsIncludeRelayPortFallback(t *testing.T) {
+	got := preferredEndpoints("80.86.216.169:443", "443")
+	want := []string{"80.86.216.169:443", "80.86.216.169:9443"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected endpoint count: got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected endpoint order: got %v want %v", got, want)
+		}
+	}
+}
+
 func TestBuildConfigFromServerProfile(t *testing.T) {
 	profile := `
 CHAMELEON_SERVER=server.example:443

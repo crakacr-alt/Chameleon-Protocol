@@ -51,7 +51,8 @@ jobs:
           fi
           echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
           echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
-          # GitHub-hosted Android images already include accepted SDK licenses.\n          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;27.3.13750724"
+          # GitHub-hosted Android images already include accepted SDK licenses.
+          "$sdkmanager_bin" "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;27.3.13750724"
 
       - name: Test Go core
         run: go test ./...
@@ -182,10 +183,16 @@ jobs:
           apk="Chameleon-Android-${version}.apk"
           notes="android/releases/${version}.md"
 
+          # Archive tracked sources only; credentials and local captures are
+          # never included. The entry point installs this exact source bundle.
+          git archive --format=tar HEAD | gzip -n > Chameleon-server-installer.tar.gz
+          cp docs/network_installer.md Chameleon-server-guide.md
+          sha256sum "$apk" Chameleon-server-installer.tar.gz Chameleon-server-guide.md > SHA256SUMS.txt
+
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$apk" --clobber
+            gh release upload "$tag" "$apk" Chameleon-server-installer.tar.gz Chameleon-server-guide.md SHA256SUMS.txt --clobber
           else
-            gh release create "$tag" "$apk" \
+            gh release create "$tag" "$apk" Chameleon-server-installer.tar.gz Chameleon-server-guide.md SHA256SUMS.txt \
               --target "$GITHUB_SHA" \
               --title "Chameleon Android ${version}" \
               --notes-file "$notes"
