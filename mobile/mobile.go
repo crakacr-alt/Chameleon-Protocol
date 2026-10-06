@@ -218,15 +218,36 @@ func preferredEndpoints(endpoint, preferredPort string) []string {
 	if endpoint == "" {
 		return nil
 	}
-	host, port, err := net.SplitHostPort(endpoint)
+	host, _, err := net.SplitHostPort(endpoint)
 	if err != nil || strings.TrimSpace(host) == "" {
 		return []string{endpoint}
 	}
 	preferred := net.JoinHostPort(host, preferredPort)
-	if port == preferredPort || preferred == endpoint {
-		return []string{endpoint}
+	// Some relay deployments expose both 443 and 9443. Keep the profile's
+	// explicit endpoint as the second attempt, then try the alternate port.
+	// Each candidate must pass the same pinned TLS and authenticated probe.
+	alternatePort := "9443"
+	if preferredPort == alternatePort {
+		alternatePort = "443"
 	}
-	return []string{preferred, endpoint}
+	alternate := net.JoinHostPort(host, alternatePort)
+	out := make([]string, 0, 3)
+	for _, candidate := range []string{preferred, endpoint, alternate} {
+		if candidate == "" {
+			continue
+		}
+		seen := false
+		for _, existing := range out {
+			if existing == candidate {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			out = append(out, candidate)
+		}
+	}
+	return out
 }
 
 func ValidateConfig(configJSON string) string {

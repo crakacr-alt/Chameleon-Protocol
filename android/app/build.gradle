@@ -10,8 +10,9 @@ android {
         applicationId "io.chameleon.android"
         minSdk 23
         targetSdk 35
-        versionCode 100101
-        versionName "1.1.1-alpha"
+        versionCode 100102
+        versionName "1.1.2-alpha"
+        testInstrumentationRunner "io.chameleon.android.VpnSmokeInstrumentation"
     }
 
     signingConfigs {

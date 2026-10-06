@@ -1,113 +1,110 @@
-# Автоматическая установка двух серверов Chameleon
+# Установка Chameleon на Ubuntu/Debian
 
-Начиная с 1.0.4 для Ubuntu/Debian можно использовать один интерактивный установщик
-для обеих VPS.
+Схема: **Android → промежуточный сервер (Ingress) → WireGuard → Exit → Интернет**.
+Сайты видят IP Exit. Для одного сервера установите только Exit и импортируйте его прямой профиль.
 
-Скачать его:
+## Установка из комплекта
+
+Скопируйте `Chameleon-server-installer.tar.gz` на каждую VPS через WinSCP или scp:
+
+```bash
+mkdir -p /root/chameleon-installer
+tar -xzf /root/Chameleon-server-installer.tar.gz -C /root/chameleon-installer
+cd /root/chameleon-installer
+sudo bash install.sh
+```
+
+Комплект содержит исходники и исправления. `install.sh` собирает именно эту версию,
+не подменяя её кодом из GitHub. Для загрузки пакетов и Go нужен Интернет.
+Не удаляйте каталог комплекта, если хотите повторно запускать его установщик.
+
+Меню:
+
+1. **Exit server** — установить/обновить выходной сервер.
+2. **Intermediate server** — установить промежуточный сервер.
+3. **Pair exit → intermediate server** — связать два сервера.
+4. **Show status** — службы, WireGuard, адреса и пути к профилям.
+5. **Exit** — выйти из установщика.
+
+## Два сервера
+
+1. На **Exit** выберите пункт **1**. Скопируйте публичный `Server 1 pairing key`
+   и запишите порт Chameleon. Для новой установки мастер использует **9443**;
+   при обновлении сохраняет существующий порт.
+2. На **промежуточном сервере** выберите **2**, вставьте публичный ключ Exit.
+   Обычно оставьте публичный порт **9443**, WireGuard **51821**.
+   В поле `Chameleon port on Server 1` введите порт из первого шага.
+   Скопируйте `Server 2 pairing key` и публичный IP этой VPS.
+3. На **Exit** выберите **3**, введите IP и публичный ключ промежуточного сервера.
+   Укажите те же публичный порт и порт WireGuard. Установщик проверяет handshake
+   и создаёт клиентские профили.
+4. На **Exit** выберите **4**, чтобы снова увидеть пути к профилям.
+
+Нужны root/sudo, две разные VPS и свободные порты. В firewall панели хостинга
+разрешите TCP+UDP на публичный порт промежуточного сервера и UDP на его порт
+WireGuard. Exit должен иметь исходящий доступ к этой VPS и Интернету.
+SSH-порт не меняется. Локальный UFW настраивается скриптами.
+
+Схема соединяет **один промежуточный сервер с одним Exit**. Цепочки из трёх
+и более серверов этим мастером не поддерживаются.
+
+## Где взять конфигурацию клиента
+
+Все профили находятся на **Exit**, в `/etc/chameleon`:
+
+| Подключение | Рекомендуемый файл Auth v2 |
+|---|---|
+| Напрямую к Exit | `/etc/chameleon/client-profile-v2.txt` |
+| Через промежуточный сервер | `/etc/chameleon/client-profile-relay-v2.txt` |
+
+Relay-профиль появляется **после сопряжения**. Меню **Show status** печатает
+пути и endpoint, не выводя секреты. Старые файлы без `-v2` сохраняются для
+совместимости. На Android импортируйте текст нужного файла и выберите VPN.
+
+Скачать файл через WinSCP либо:
+
+```bash
+scp root@EXIT_IP:/etc/chameleon/client-profile-relay-v2.txt ./client-profile.txt
+```
+
+Замените `EXIT_IP` адресом Exit. Передайте файл на телефон и импортируйте его
+в приложении. Это секрет доступа: не публикуйте его. Между серверами копируются
+только публичные pairing keys; приватные WireGuard-ключи остаются на своих VPS.
+
+По умолчанию relay-профиль использует TLS. DNS работает через TLS-туннель,
+если QUIC недоступен. Для QUIC включите его при сопряжении (UDP должен быть доступен):
+
+```bash
+sudo CHAMELEON_RELAY_QUIC=1 bash install.sh pair
+```
+
+## Проверка и обновление
+
+```bash
+sudo bash install.sh status
+sudo chameleonctl health
+sudo journalctl -u chameleon-tunnel -n 50 --no-pager
+```
+
+На клиенте проверьте открытие сайта и внешний IP: в режиме VPN он должен
+совпадать с IP Exit. Только TLS handshake ещё не доказывает передачу трафика.
+
+Для обновления из нового комплекта распакуйте его в отдельный каталог и
+повторите установку Exit. `chameleonctl update` использует опубликованную
+ветку GitHub; локальные исправления появятся там только после публикации.
+
+Установка опубликованной версии напрямую из GitHub:
 
 ```bash
 curl -fsSLo /root/chameleon-setup.sh \
   https://raw.githubusercontent.com/crakacr-alt/Chameleon-Protocol/main/deploy/setup-network.sh
-chmod 700 /root/chameleon-setup.sh
 sudo bash /root/chameleon-setup.sh
 ```
 
-Установщик показывает меню:
+Эта команда устанавливает содержимое `main`, которое может отличаться от
+выданного локального комплекта.
 
-1. **Server 1** — устанавливает/обновляет Chameleon exit и создаёт WireGuard identity.
-2. **Server 2** — поднимает публичный ingress и private WireGuard link.
-3. **Pair Server 1 -> Server 2** — завершает сопряжение и создаёт relay client profile.
-4. **Status** — показывает состояние Chameleon, WireGuard и путь к профилям.
-
-## Безопасность ключей
-
-Установщик никогда не просит переносить private WireGuard key между серверами.
-Строка **pairing key** — это только public WireGuard key. Её можно копировать
-между VPS.
-
-Tunnel PSK остаётся в root-only профиле:
-
-```text
-/etc/chameleon/client-profile.txt
-/etc/chameleon/client-profile-relay.txt
-```
-
-Не вставляйте содержимое этих файлов в чат или публичный issue.
-
-## Порядок первого запуска
-
-### Server 1
-
-```bash
-sudo bash /root/chameleon-setup.sh
-```
-
-Выберите:
-
-```text
-1) Server 1 - install/update Chameleon exit
-```
-
-Скопируйте напечатанный **Server 1 pairing key**.
-
-### Server 2
-
-Запустите тот же файл и выберите:
-
-```text
-2) Server 2 - install public ingress
-```
-
-Вставьте pairing key Server 1. Значения портов можно оставить по умолчанию:
-
-```text
-Public Chameleon port: 9443
-Private WireGuard port: 51821
-Chameleon port on Server 1: 9443
-```
-
-После установки скопируйте **Server 2 pairing key**.
-
-### Завершение на Server 1
-
-Снова запустите установщик и выберите:
-
-```text
-3) Pair Server 1 -> Server 2
-```
-
-Нужно ввести только публичный IP Server 2, его pairing key и при необходимости
-изменить порты.
-
-После успешного handshake будет создан файл:
-
-```text
-/etc/chameleon/client-profile-relay.txt
-```
-
-Именно его нужно импортировать в Android/desktop client, если клиент должен
-подключаться через Server 2.
-
-## Неинтерактивный режим
-
-Для автоматизации доступны команды:
-
-```bash
-sudo bash setup-network.sh server1
-sudo bash setup-network.sh server2
-sudo bash setup-network.sh pair
-sudo bash setup-network.sh status
-```
-
-Параметры также можно передать через environment:
-
-```text
-CHAMELEON_EXIT_PUBLIC_KEY
-CHAMELEON_INGRESS_IP
-CHAMELEON_INGRESS_PUBLIC_KEY
-CHAMELEON_RELAY_PORT
-CHAMELEON_WG_PORT
-CHAMELEON_EXIT_PORT
-```
-
-Private keys в environment не передаются.
+Неинтерактивные команды: `bash install.sh exit`, `ingress`, `pair`, `status`.
+Параметры: `CHAMELEON_PORT`, `CHAMELEON_EXIT_PORT`, `CHAMELEON_RELAY_PORT`,
+`CHAMELEON_WG_PORT`, `CHAMELEON_EXIT_PUBLIC_KEY`, `CHAMELEON_INGRESS_IP`,
+`CHAMELEON_INGRESS_PUBLIC_KEY`.

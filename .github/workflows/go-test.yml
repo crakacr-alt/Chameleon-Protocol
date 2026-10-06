@@ -37,7 +37,10 @@ jobs:
 
       - name: Check deploy scripts
         shell: bash
-        run: bash -n deploy/*.sh deploy/chameleonctl
+        run: |
+          for script in install.sh deploy/*.sh deploy/chameleonctl; do
+            bash -n "$script"
+          done
 
       - name: Check PowerShell installer syntax
         shell: pwsh

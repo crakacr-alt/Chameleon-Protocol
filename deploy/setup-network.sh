@@ -23,6 +23,13 @@ install_base() {
 }
 
 sync_repo() {
+  if [ "${CHAMELEON_USE_CURRENT_SOURCE:-0}" = "1" ]; then
+    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    [ -f "$REPO_DIR/go.mod" ] || die "installer bundle is incomplete"
+    export CHAMELEON_REPO_DIR="$REPO_DIR"
+    log "using bundled source in $REPO_DIR"
+    return
+  fi
   install_base
   mkdir -p "$(dirname "$REPO_DIR")"
 
@@ -68,13 +75,25 @@ valid_port() {
 server1_install() {
   sync_repo
   log "installing/updating Chameleon exit server"
+  # The guided two-server installation uses the same private target port as
+  # the ingress wizard. Preserve the port when updating an existing exit.
+  if [ ! -s /etc/chameleon/tunnel.env ]; then
+    export CHAMELEON_PORT="${CHAMELEON_PORT:-9443}"
+  fi
   bash "$REPO_DIR/deploy/install-server.sh"
   bash "$REPO_DIR/deploy/prepare-wireguard-relay-exit.sh"
 
   printf '\n=== SERVER 1 READY ===\n'
+  printf 'Chameleon port on this exit: '
+  sed -n 's/^CHAMELEON_LISTEN=.*://p' /etc/chameleon/tunnel.env | tail -n1
+  printf 'Enter this port in the intermediate server installer.\n'
+  printf 'Exit server client profiles:\n'
+  printf '  legacy: /etc/chameleon/client-profile.txt\n'
+  [ -s /etc/chameleon/client-profile-v2.txt ] && printf '  Auth v2: /etc/chameleon/client-profile-v2.txt\n'
+  printf 'The relay profile will be created after pairing with Server 2.\n\n'
   printf 'Server 1 pairing key (PUBLIC, safe to copy):\n'
   cat /etc/chameleon/wg-relay/public.key
-  printf '\n\nNext: run this installer on Server 2 and choose "Server 2 / ingress".\n'
+  printf '\n\nNext: run this installer on the second VPS and choose "Intermediate server".\n'
 }
 
 server2_install() {
@@ -103,7 +122,7 @@ server2_install() {
   cat /etc/chameleon/wg-relay/public.key
   printf '\n\nServer 2 public IP: '
   curl -4fsS --connect-timeout 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'
-  printf '\nNow return to Server 1, run this installer again and choose "Pair Server 1 -> Server 2".\n'
+  printf '\nNow return to the exit VPS, run this installer again and choose "Pair exit -> intermediate server".\n'
 }
 
 server1_pair() {
@@ -143,6 +162,7 @@ server1_pair() {
   printf '\n=== PAIRING COMPLETE ===\n'
   wg show wgcham0 || true
   printf '\nClient relay profile: /etc/chameleon/client-profile-relay.txt\n'
+  [ -s /etc/chameleon/client-profile-relay-v2.txt ] && printf 'Client Auth v2 relay profile: /etc/chameleon/client-profile-relay-v2.txt\n'
   printf 'Endpoint: '
   awk -F= '$1=="CHAMELEON_SERVER"{print $2; exit}' /etc/chameleon/client-profile-relay.txt
   printf '\nIMPORTANT: do not paste the profile text into chats; it contains the tunnel PSK.\n'
@@ -154,12 +174,14 @@ show_status() {
   printf '\n=== WireGuard relay ===\n'
   wg show wgcham0 2>/dev/null || printf 'wgcham0 is not configured\n'
   printf '\n=== Profiles ===\n'
-  for p in /etc/chameleon/client-profile.txt /etc/chameleon/client-profile-relay.txt; do
+  for p in /etc/chameleon/client-profile-v2.txt /etc/chameleon/client-profile-relay-v2.txt /etc/chameleon/client-profile.txt /etc/chameleon/client-profile-relay.txt; do
     if [ -s "$p" ]; then
       printf '%s -> ' "$p"
       awk -F= '$1=="CHAMELEON_SERVER"{print $2; exit}' "$p"
     fi
   done
+  printf '\nCopy the relay-v2 profile from the EXIT server to your device after pairing.\n'
+  printf 'The intermediate server stores no client credentials.\n'
 }
 
 usage() {
@@ -167,7 +189,7 @@ usage() {
 Chameleon network setup
 
 Usage:
-  sudo bash setup-network.sh [server1|server2|pair|status]
+  sudo bash setup-network.sh [exit|ingress|pair|status]
 
 Interactive mode with no argument shows a menu.
 Private WireGuard keys never leave their server. The "pairing key" shown by
@@ -182,9 +204,9 @@ main() {
 
 Chameleon automatic network installer
 
-  1) Server 1 - install/update Chameleon exit
-  2) Server 2 - install public ingress
-  3) Pair Server 1 -> Server 2
+  1) Exit server - install/update Chameleon
+  2) Intermediate server - install public ingress
+  3) Pair exit -> intermediate server
   4) Show status
   5) Exit
 

@@ -21,6 +21,7 @@ type Summary struct {
 	AvgLatency time.Duration
 	Jitter     time.Duration
 	LossRate   float64
+	Error      string `json:"error,omitempty"`
 }
 
 // Measure runs an active probe several times. The caller controls the actual
@@ -76,6 +77,9 @@ func Summarize(samples []Sample) Summary {
 	for _, sample := range samples {
 		if sample.Err != nil {
 			summary.Failures++
+			if summary.Error == "" {
+				summary.Error = sample.Err.Error()
+			}
 			continue
 		}
 		summary.Successes++

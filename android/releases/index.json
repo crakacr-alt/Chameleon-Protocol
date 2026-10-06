@@ -1,7 +1,23 @@
 {
   "schema": 1,
-  "latest": "1.1.1-alpha",
+  "latest": "1.1.2-alpha",
   "releases": [
+    {
+      "version": "1.1.2-alpha",
+      "protocol": "1.1-auth-v2",
+      "date": "2026-10-06",
+      "min_sdk": 23,
+      "apk_url": "https://github.com/crakacr-alt/Chameleon-Protocol/releases/download/android-v1.1.2-alpha/Chameleon-Android-1.1.2-alpha.apk",
+      "sha256": "",
+      "changes": [
+        "Запасной порт 443/9443 с проверкой TLS pin и Auth v2.",
+        "Doctor поддерживает Auth v2 и показывает причины ошибок.",
+        "Inspector: отдельные пакеты, HEX/ASCII, фильтр, пауза и PCAP; HTTPS не расшифровывается.",
+        "Установщик Exit/Intermediate/Pair/Status показывает пути к профилям Auth v2.",
+        "DNS, HTTPS и UDP STUN проверены на эмуляторе через два сервера; физический телефон ещё не проверен."
+      ],
+      "vpn_min_sdk": 29
+    },
     {
       "version": "1.1.1-alpha",
       "protocol": "1.1-auth-v2",
