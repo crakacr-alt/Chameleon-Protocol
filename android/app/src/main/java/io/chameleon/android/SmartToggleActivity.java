@@ -35,6 +35,25 @@ public final class SmartToggleActivity extends Activity {
             return;
         }
 
+        // Respect the user's Bridge selection in the widget and quick tile.
+        // Starting Smart VpnService here would evict the external VPN.
+        if ("bridge".equals(AppFiles.runtimeMode(this))) {
+            boolean active = ChameleonService.bridgeStarting()
+                    || (ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())
+                    && Mobile.listenerReady());
+            Intent bridge = new Intent(this, ChameleonService.class);
+            bridge.setAction(active ? ChameleonService.ACTION_STOP : ChameleonService.ACTION_START);
+            if (active) {
+                startService(bridge);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(bridge);
+            } else {
+                startService(bridge);
+            }
+            finish();
+            return;
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             Toast.makeText(this, "Smart VPN требует Android 10 или новее", Toast.LENGTH_LONG).show();
             openMain();
