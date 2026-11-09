@@ -46,15 +46,21 @@ SOCKS5 127.0.0.1:1080
 
 ### Smart
 
-`Smart — direct + Chameleon` работает как локальный SOCKS5 sidecar. Он не
-занимает Android `VpnService`, поэтому может использоваться рядом с другим
-активным VPN. Adaptive core может выбрать direct или Chameleon carrier.
+`Smart — direct + Chameleon` в текущем Android APK использует системный
+`VpnService`: он выбирает direct или Chameleon через adaptive core и
+заменяет ранее активный системный VPN.
 
-### Proxy
+### Bridge — внешний маршрут
 
-`Proxy — только Chameleon` тоже остаётся локальным SOCKS5 sidecar, но direct
-TCP carrier исключён. Этот режим нужен для принудительной проверки маршрута
-через Chameleon.
+`Bridge` поднимает только локальный `SOCKS5 127.0.0.1:1080`, не захватывает
+`VpnService` и не отключает уже активный внешний VPN (Tailscale и аналоги).
+В настройках можно задать доступный `host:port` (в том числе
+`[IPv6]:port`) вместо адреса из профиля, сохранив Chameleon-авторизацию
+и TLS fingerprint. Работает с TLS/TCP; QUIC в Bridge отключён.
+
+Bridge не обеспечивает системный VPN для всего телефона: только программы,
+которые явно используют этот SOCKS5, направляют через него трафик.
+Подробнее: [Bridge — внешний маршрут](bridge.md).
 
 ### VPN — весь телефон
 
@@ -89,7 +95,8 @@ VPN mode использует Proxy core: трафик, уже захвачен�
 получает direct fallback.
 
 Android допускает только один независимый активный `VpnService`. Поэтому
-другой системный VPN совместим с Chameleon **только в Smart sidecar mode**.
+сосуществование с другим системным VPN поддерживается **через Bridge**,
+а не через системные режимы Smart/Inspector/VPN.
 
 Приложение в целом поддерживает Android 6.0+ (API 23), но VPN/TUN mode в
 alpha.3 требует Android 10+ (API 29), поскольку закреплённый upstream
