@@ -12,6 +12,8 @@ import android.util.Log;
 
 import mobile.Mobile;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 public final class ChameleonService extends Service {
     private static final String TAG = "ChameleonService";
     static final String ACTION_START = "io.chameleon.android.START";
@@ -21,6 +23,7 @@ public final class ChameleonService extends Service {
 
     private static final String CHANNEL_ID = "chameleon_connection";
     private static final int NOTIFICATION_ID = 1001;
+    private final AtomicInteger bridgeGeneration = new AtomicInteger();
 
     @Override
     public void onCreate() {
@@ -49,6 +52,14 @@ public final class ChameleonService extends Service {
         }
 
         startForeground(NOTIFICATION_ID, notification("Подключение…"));
+
+        // Bridge is a local SOCKS5 proxy only. Keep another VPN (for example,
+        // an overlay network) in control of Android's sole VpnService slot.
+        if ("bridge".equals(AppFiles.runtimeMode(this))) {
+            final int token = bridgeGeneration.incrementAndGet();
+            new Thread(() -> startBridge(token), "chameleon-bridge").start();
+            return START_STICKY;
+        }
 
         try {
             String error = Mobile.startOwned(AppFiles.readConfig(this), RUNTIME_OWNER);
@@ -81,11 +92,48 @@ public final class ChameleonService extends Service {
         }
     }
 
+    private void startBridge(int token) {
+        try {
+            notifyState("Bridge: проверяю внешний маршрут и Auth v2…");
+            String prepared = Mobile.prepareBridgeConfig(
+                    AppFiles.readConfig(this), AppFiles.bridgeEndpoint(this));
+            if (token != bridgeGeneration.get()) return;
+            if (prepared.startsWith("ERROR:")) {
+                throw new IllegalStateException(prepared.substring("ERROR:".length()).trim());
+            }
+
+            synchronized (this) {
+                if (token != bridgeGeneration.get()) return;
+                String error = Mobile.startOwned(prepared, RUNTIME_OWNER);
+                if (error != null && !error.isEmpty()) {
+                    throw new IllegalStateException(error);
+                }
+                if (!runtimeRunning()) {
+                    throw new IllegalStateException("Локальный SOCKS5 127.0.0.1:1080 не запустился");
+                }
+            }
+
+            AppFiles.clearLastVpnError(this);
+            notifyState("Bridge активен • SOCKS5 127.0.0.1:1080");
+            ChameleonWidget.updateAll(this);
+            ChameleonTile.requestRefresh(this);
+        } catch (Exception error) {
+            if (token != bridgeGeneration.get()) return;
+            String message = error.getMessage() == null
+                    ? error.getClass().getSimpleName() : error.getMessage();
+            Log.e(TAG, "Bridge startup failed", error);
+            AppFiles.setLastVpnError(this, "Bridge: " + message);
+            notifyState("Bridge ошибка: " + message);
+            stopSelf();
+        }
+    }
+
     private boolean runtimeRunning() {
         return RUNTIME_OWNER.equals(Mobile.owner()) && Mobile.listenerReady();
     }
 
     private void stopRuntime() {
+        bridgeGeneration.incrementAndGet();
         Mobile.stopOwned(RUNTIME_OWNER);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -95,6 +143,7 @@ public final class ChameleonService extends Service {
 
     @Override
     public void onDestroy() {
+        bridgeGeneration.incrementAndGet();
         Mobile.stopOwned(RUNTIME_OWNER);
         ChameleonWidget.updateAll(this);
         ChameleonTile.requestRefresh(this);
