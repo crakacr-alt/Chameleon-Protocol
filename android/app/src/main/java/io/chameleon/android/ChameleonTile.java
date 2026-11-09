@@ -8,7 +8,7 @@ import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 
 
-/** Quick Settings tile: one tap toggles Chameleon in Smart mode. */
+/** Quick Settings tile: one tap toggles the selected Chameleon mode. */
 public final class ChameleonTile extends TileService {
     @Override
     public void onStartListening() {
@@ -36,12 +36,16 @@ public final class ChameleonTile extends TileService {
     private void refresh() {
         Tile tile = getQsTile();
         if (tile == null) return;
-        boolean running = ChameleonVpnService.running() || ChameleonVpnService.starting();
+        boolean running = ChameleonVpnService.running() || ChameleonVpnService.starting()
+                || ChameleonService.bridgeStarting()
+                || (ChameleonService.RUNTIME_OWNER.equals(mobile.Mobile.owner())
+                    && mobile.Mobile.listenerReady());
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         String mode = AppFiles.runtimeMode(this);
         String label = "inspector".equals(mode)
                 ? "Chameleon Inspector"
-                : ("vpn".equals(mode) ? "Chameleon VPN" : "Chameleon Smart");
+                : ("vpn".equals(mode) ? "Chameleon VPN"
+                : ("bridge".equals(mode) ? "Chameleon Bridge" : "Chameleon Smart"));
         tile.setLabel(label);
         tile.updateTile();
     }
