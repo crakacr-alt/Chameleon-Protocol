@@ -1,5 +1,7 @@
 # Chameleon Protocol
 
+**Bridge — внешний маршрут:** [настройка Android поверх уже активного VPN/IPv6](docs/bridge.md). Режим не занимает Android VpnService и поднимает локальный SOCKS5; для всего телефона это не второй системный VPN.
+
 Последний Android-релиз: [1.1.2-alpha](https://github.com/crakacr-alt/Chameleon-Protocol/releases/tag/android-v1.1.2-alpha).
 VPN требует Android 10+. [Руководство установки Exit и промежуточного сервера](docs/network_installer.md)
 описывает сопряжение и расположение клиентских профилей. Inspector показывает
