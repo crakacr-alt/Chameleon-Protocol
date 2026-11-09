@@ -262,7 +262,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     AppFiles.setBridgeEndpoint(this, field.getText().toString());
                     updateCompatibilityLabel();
-                    if (ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())) {
+                    if (ChameleonService.bridgeStarting() || ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())) {
                         Intent stop = new Intent(this, ChameleonService.class);
                         stop.setAction(ChameleonService.ACTION_STOP);
                         startService(stop);
@@ -312,7 +312,7 @@ public final class MainActivity extends Activity {
             if (ChameleonVpnService.running()) {
                 ChameleonVpnService.requestStop(this);
                 Toast.makeText(this, "VPN остановлен. Нажмите подключение снова.", Toast.LENGTH_SHORT).show();
-            } else if (Mobile.running()) {
+            } else if (ChameleonService.bridgeStarting() || Mobile.running()) {
                 Intent stop = new Intent(this, ChameleonService.class);
                 stop.setAction(ChameleonService.ACTION_STOP);
                 startService(stop);
@@ -353,7 +353,7 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        if (ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())) {
+        if (ChameleonService.bridgeStarting() || ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())) {
             Intent stop = new Intent(this, ChameleonService.class);
             stop.setAction(ChameleonService.ACTION_STOP);
             startService(stop);
@@ -497,7 +497,8 @@ public final class MainActivity extends Activity {
         boolean vpnStarting = ChameleonVpnService.starting();
         boolean sidecar = ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())
                 && Mobile.listenerReady() && !vpn;
-        boolean running = vpn || vpnStarting || sidecar;
+        boolean bridgeStarting = ChameleonService.bridgeStarting();
+        boolean running = vpn || vpnStarting || sidecar || bridgeStarting;
 
         String persistedError = AppFiles.lastVpnError(this);
         boolean failed = !running && !persistedError.isEmpty();
@@ -506,7 +507,8 @@ public final class MainActivity extends Activity {
                 : (vpnStarting ? "VPN подключается…"
                 : (sidecar ? ("bridge".equals(AppFiles.runtimeMode(this))
                 ? "Bridge активен" : "Подключено")
-                : (failed ? "Ошибка подключения" : "Отключено"))));
+                : (bridgeStarting ? "Bridge подключается…"
+                : (failed ? "Ошибка подключения" : "Отключено")))));
         stateText.setTextColor(color(running ? R.color.success : (failed ? R.color.danger : R.color.textPrimary)));
         powerButton.setBackground(circle(color(running ? R.color.success : R.color.accent)));
         serverText.setText(AppFiles.serverLabel(this));
@@ -520,6 +522,8 @@ public final class MainActivity extends Activity {
         } else if (sidecar) {
             detailText.setText("SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase()
                     + ("bridge".equals(mode) ? " • системный VPN не заменён" : " активен"));
+        } else if (bridgeStarting) {
+            detailText.setText("Bridge • проверка внешнего маршрута и авторизации…");
         } else if (failed) {
             detailText.setText(persistedError);
         } else {
