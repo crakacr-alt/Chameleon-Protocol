@@ -44,8 +44,9 @@ public final class ChameleonService extends Service {
         }
 
         if (ACTION_SMART_TOGGLE.equals(action)) {
-            if (runtimeRunning()) {
+            if (runtimeRunning() || bridgeStarting) {
                 stopRuntime();
+                return START_NOT_STICKY;
             }
             Intent smart = new Intent(this, SmartToggleActivity.class);
             smart.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -180,7 +181,7 @@ public final class ChameleonService extends Service {
         );
 
         Intent toggle = new Intent(this, ChameleonService.class);
-        toggle.setAction(runtimeRunning() ? ACTION_STOP : ACTION_SMART_TOGGLE);
+        toggle.setAction(runtimeRunning() || bridgeStarting ? ACTION_STOP : ACTION_SMART_TOGGLE);
         PendingIntent togglePending = PendingIntent.getService(
                 this, 1, toggle,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
@@ -197,7 +198,7 @@ public final class ChameleonService extends Service {
                 .setContentIntent(pending)
                 .addAction(new Notification.Action.Builder(
                         R.drawable.ic_chameleon,
-                        runtimeRunning() ? "Выключить" : "Smart",
+                        runtimeRunning() || bridgeStarting ? "Выключить" : "Включить",
                         togglePending
                 ).build())
                 .setOngoing(runtimeRunning())
