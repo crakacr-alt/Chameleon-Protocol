@@ -20,6 +20,7 @@ final class AppFiles {
     private static final String PREFS = "chameleon_ui";
     private static final String KEY_RUNTIME_MODE = "runtime_mode";
     private static final String KEY_LAST_VPN_ERROR = "last_vpn_error";
+    private static final String KEY_BRIDGE_ENDPOINT = "bridge_endpoint";
 
     private AppFiles() {}
 
@@ -83,6 +84,18 @@ final class AppFiles {
     static void setRuntimeMode(Context context, String mode) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY_RUNTIME_MODE, mode).apply();
+    }
+
+    // Optional first-hop address used by Bridge; never contains credentials.
+    // Empty means "use the authenticated endpoint from the imported profile".
+    static String bridgeEndpoint(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_BRIDGE_ENDPOINT, "");
+    }
+
+    static void setBridgeEndpoint(Context context, String endpoint) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY_BRIDGE_ENDPOINT, endpoint == null ? "" : endpoint.trim()).apply();
     }
 
     static String lastVpnError(Context context) {
