@@ -23,6 +23,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -57,6 +58,7 @@ public final class MainActivity extends Activity {
     private TextView coexistText;
     private Button powerButton;
     private Spinner modeSpinner;
+    private Button bridgeEndpointButton;
     private CheckBox autoUpdate;
     private boolean modeEventsEnabled;
 
@@ -163,7 +165,8 @@ public final class MainActivity extends Activity {
         String[] modes = {
                 "Smart — системный VPN: direct + Chameleon",
                 "Inspector — сниффер трафика + Chameleon",
-                "VPN — весь телефон только через Chameleon"
+                "VPN — весь телефон только через Chameleon",
+                "Bridge — внешний маршрут (SOCKS5)"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this,
@@ -182,6 +185,12 @@ public final class MainActivity extends Activity {
             }
         });
         card.addView(modeSpinner, new LinearLayout.LayoutParams(-1, dp(52)));
+
+        bridgeEndpointButton = secondaryButton("Bridge: адрес сервера");
+        bridgeEndpointButton.setOnClickListener(v -> editBridgeEndpoint());
+        LinearLayout.LayoutParams bridgeParams = new LinearLayout.LayoutParams(-1, dp(52));
+        bridgeParams.topMargin = dp(10);
+        card.addView(bridgeEndpointButton, bridgeParams);
 
         Button importButton = secondaryButton("Импортировать профиль");
         importButton.setOnClickListener(v -> chooseProfile());
@@ -219,7 +228,9 @@ public final class MainActivity extends Activity {
         root.addView(inspectorButton, inspectorParams);
 
         TextView note = label(
-                "Inspector записывает трафик только после явного запуска и сохраняет захват локально на устройстве.",
+                "Bridge работает через уже существующий VPN/маршрут и не заменяет системный VPN. " +
+                "Для приложений нужен SOCKS5 127.0.0.1:1080. " +
+                "Inspector записывает трафик только после явного запуска.",
                 12,
                 R.color.textSecondary
         );
@@ -231,18 +242,49 @@ public final class MainActivity extends Activity {
         return scroll;
     }
 
+    private void editBridgeEndpoint() {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setText(AppFiles.bridgeEndpoint(this));
+        field.setHint("100.101.102.103:9443 или [2001:db8::1]:9443");
+
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.setPadding(dp(20), dp(6), dp(20), 0);
+        wrapper.addView(field, new LinearLayout.LayoutParams(-1, -2));
+
+        new AlertDialog.Builder(this)
+                .setTitle("Bridge — адрес сервера")
+                .setMessage("Укажи доступный адрес Chameleon-сервера через внешний маршрут. " +
+                        "Пустое поле использует адрес из импортированного профиля. " +
+                        "Ключи и TLS fingerprint остаются прежними.")
+                .setView(wrapper)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    AppFiles.setBridgeEndpoint(this, field.getText().toString());
+                    updateCompatibilityLabel();
+                    if (ChameleonService.RUNTIME_OWNER.equals(Mobile.owner())) {
+                        Intent stop = new Intent(this, ChameleonService.class);
+                        stop.setAction(ChameleonService.ACTION_STOP);
+                        startService(stop);
+                        Toast.makeText(this, "Адрес изменён. Подключи Bridge снова.", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
     private void restoreModeSelection() {
         modeEventsEnabled = false;
         String mode = (!AppFiles.hasConfig(this) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 ? "vpn"
                 : AppFiles.runtimeMode(this);
         if ("proxy".equals(mode)) {
-            // 1.0.x called the local-only SOCKS mode "Proxy". In 1.1 it is
-            // replaced by the full-device Inspector, so migrate the UI choice.
-            mode = "inspector";
+            // Restore the old local-only proxy as the universal Bridge mode.
+            mode = "bridge";
             AppFiles.setRuntimeMode(this, mode);
         }
-        int position = "vpn".equals(mode) ? 2 : ("inspector".equals(mode) ? 1 : 0);
+        int position = "bridge".equals(mode) ? 3
+                : ("vpn".equals(mode) ? 2 : ("inspector".equals(mode) ? 1 : 0));
         modeSpinner.setSelection(position, false);
         modeEventsEnabled = true;
         updateCompatibilityLabel();
@@ -250,6 +292,7 @@ public final class MainActivity extends Activity {
 
     private String selectedMode() {
         int position = modeSpinner.getSelectedItemPosition();
+        if (position == 3) return "bridge";
         if (position == 2) return "vpn";
         if (position == 1) return "inspector";
         return "smart";
@@ -288,11 +331,20 @@ public final class MainActivity extends Activity {
             label = "● Smart VPN • direct + Chameleon";
         } else if (position == 1) {
             label = "● Inspector • захват трафика через системный VPN";
-        } else {
+        } else if (position == 2) {
             label = "● VPN • весь трафик только через Chameleon";
+        } else {
+            label = "● Bridge • без VpnService, через внешний VPN/маршрут";
         }
         coexistText.setText(label);
         coexistText.setTextColor(color(R.color.textSecondary));
+        if (bridgeEndpointButton != null) {
+            bridgeEndpointButton.setVisibility(position == 3 ? View.VISIBLE : View.GONE);
+            String endpoint = AppFiles.bridgeEndpoint(this);
+            bridgeEndpointButton.setText(endpoint.isEmpty()
+                    ? "Bridge: адрес из профиля (изменить)"
+                    : "Bridge: " + endpoint);
+        }
     }
 
     private void toggleConnection() {
@@ -315,6 +367,23 @@ public final class MainActivity extends Activity {
         }
 
         String mode = selectedMode();
+        if ("bridge".equals(mode)) {
+            try {
+                AppFiles.setRuntimeMode(this, "bridge");
+                AppFiles.setCoreMode(this, "proxy");
+                AppFiles.clearLastVpnError(this);
+                Intent start = new Intent(this, ChameleonService.class);
+                start.setAction(ChameleonService.ACTION_START);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(start);
+                } else {
+                    startService(start);
+                }
+            } catch (Exception error) {
+                Toast.makeText(this, "Bridge: " + error.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             Toast.makeText(
                     this,
@@ -407,7 +476,10 @@ public final class MainActivity extends Activity {
 
             new AlertDialog.Builder(this)
                     .setTitle("Профиль готов")
-                    .setMessage("Профиль сохранён. Проверка ingress и Auth v2 будет выполнена после запуска Chameleon через прямой Wi-Fi/мобильный канал, чтобы активный Happ/V2Ray/другой VPN не влиял на результат.")
+                    .setMessage("bridge".equals(mode)
+                            ? "Профиль сохранён. Bridge проверит сервер через текущий внешний маршрут, " +
+                              "не отключая системный VPN. При необходимости укажи другой адрес сервера."
+                            : "Профиль сохранён. VPN-режим проверит сервер напрямую через Wi-Fi/мобильную сеть.")
                     .setPositiveButton("Подключить", (dialog, which) -> toggleConnection())
                     .setNegativeButton("Позже", null)
                     .show();
@@ -432,7 +504,9 @@ public final class MainActivity extends Activity {
         stateText.setText(vpn
                 ? "VPN подключён"
                 : (vpnStarting ? "VPN подключается…"
-                : (sidecar ? "Подключено" : (failed ? "Ошибка подключения" : "Отключено"))));
+                : (sidecar ? ("bridge".equals(AppFiles.runtimeMode(this))
+                ? "Bridge активен" : "Подключено")
+                : (failed ? "Ошибка подключения" : "Отключено"))));
         stateText.setTextColor(color(running ? R.color.success : (failed ? R.color.danger : R.color.textPrimary)));
         powerButton.setBackground(circle(color(running ? R.color.success : R.color.accent)));
         serverText.setText(AppFiles.serverLabel(this));
@@ -444,7 +518,8 @@ public final class MainActivity extends Activity {
         } else if (vpnStarting) {
             detailText.setText("Проверка сервера → авторизация → SOCKS5 → TUN…");
         } else if (sidecar) {
-            detailText.setText("SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase() + " активен");
+            detailText.setText("SOCKS5 127.0.0.1:1080 • " + mode.toUpperCase()
+                    + ("bridge".equals(mode) ? " • системный VPN не заменён" : " активен"));
         } else if (failed) {
             detailText.setText(persistedError);
         } else {
@@ -493,7 +568,7 @@ public final class MainActivity extends Activity {
                 String server = json.optString("tls_server",
                         json.optString("quic_server",
                                 json.optString("tcp_server", "—")));
-                String mode = json.optString("mode", "smart");
+                String mode = AppFiles.runtimeMode(this);
                 boolean listenerReady = Mobile.listenerReady();
                 String listener = listenerReady
                         ? "active"
@@ -506,12 +581,14 @@ public final class MainActivity extends Activity {
 
                 boolean otherVpn = hasExternalVpnTransport();
                 String remoteStatus;
-                if (error.isEmpty() && otherVpn
+                if (error.isEmpty() && otherVpn && !"bridge".equals(mode)
                         && !ChameleonVpnService.running()
                         && !ChameleonVpnService.starting()) {
                     remoteStatus = "ОТЛОЖЕНО • активен другой VPN; ingress будет проверен напрямую после запуска Chameleon";
                 } else if (error.isEmpty()) {
-                    String prepared = Mobile.prepareVPNConfig(config);
+                    String prepared = "bridge".equals(mode)
+                            ? Mobile.prepareBridgeConfig(config, AppFiles.bridgeEndpoint(this))
+                            : Mobile.prepareVPNConfig(config);
                     if (prepared.startsWith("ERROR:")) {
                         remoteStatus = "FAIL • " + prepared.substring("ERROR:".length()).trim();
                     } else {
@@ -541,6 +618,10 @@ public final class MainActivity extends Activity {
                         + "\nOwner: " + (Mobile.owner().isEmpty() ? "—" : Mobile.owner())
                         + "\nChameleon VPN: " + vpnState
                         + "\nДругой VPN: " + (otherVpn ? "active" : "не обнаружен")
+                        + ("bridge".equals(mode)
+                            ? "\nBridge endpoint: " + (AppFiles.bridgeEndpoint(this).isEmpty()
+                                ? "из профиля" : AppFiles.bridgeEndpoint(this))
+                            : "")
                         + (lastError.isEmpty() ? "" : "\nLast error: " + lastError)
                         : "Ошибка: " + error;
 
