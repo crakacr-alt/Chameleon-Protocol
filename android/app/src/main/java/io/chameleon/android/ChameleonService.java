@@ -24,6 +24,9 @@ public final class ChameleonService extends Service {
     private static final String CHANNEL_ID = "chameleon_connection";
     private static final int NOTIFICATION_ID = 1001;
     private final AtomicInteger bridgeGeneration = new AtomicInteger();
+    private static volatile boolean bridgeStarting;
+
+    static boolean bridgeStarting() { return bridgeStarting; }
 
     @Override
     public void onCreate() {
@@ -57,6 +60,7 @@ public final class ChameleonService extends Service {
         // an overlay network) in control of Android's sole VpnService slot.
         if ("bridge".equals(AppFiles.runtimeMode(this))) {
             final int token = bridgeGeneration.incrementAndGet();
+            bridgeStarting = true;
             new Thread(() -> startBridge(token), "chameleon-bridge").start();
             return START_STICKY;
         }
@@ -125,6 +129,8 @@ public final class ChameleonService extends Service {
             AppFiles.setLastVpnError(this, "Bridge: " + message);
             notifyState("Bridge ошибка: " + message);
             stopSelf();
+        } finally {
+            if (token == bridgeGeneration.get()) bridgeStarting = false;
         }
     }
 
@@ -134,6 +140,7 @@ public final class ChameleonService extends Service {
 
     private void stopRuntime() {
         bridgeGeneration.incrementAndGet();
+        bridgeStarting = false;
         Mobile.stopOwned(RUNTIME_OWNER);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -144,6 +151,7 @@ public final class ChameleonService extends Service {
     @Override
     public void onDestroy() {
         bridgeGeneration.incrementAndGet();
+        bridgeStarting = false;
         Mobile.stopOwned(RUNTIME_OWNER);
         ChameleonWidget.updateAll(this);
         ChameleonTile.requestRefresh(this);
